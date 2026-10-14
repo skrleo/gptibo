@@ -1,5 +1,5 @@
 // Business code depends on this contract, never on a gateway's field names.
-export type PaymentOrder = { id: string; amountCents: number; subject: string; expiresAt: number }
+export type PaymentOrder = { id: string; amountCents: number; subject: string; expiresAt: number; createdAt?: number; expectedRaw?: number }
 export type PaymentResult = { orderId: string; amountCents: number; status: 'pending' | 'paid' | 'closed' | 'not_found'; tradeNo?: string }
 export type RefundRequest = { id: string; amountCents: number }
 export type RefundResult = { refunded: boolean; tradeNo?: string }

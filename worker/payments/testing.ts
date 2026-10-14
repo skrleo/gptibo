@@ -4,13 +4,14 @@ import { emailValue } from '../partner-auth.ts'
 import { adminRefunds, customerRefunds } from '../refunds.ts'
 import { findPayment, paymentAction } from './service.ts'
 import { alipayConfigured } from './providers.ts'
+import { formatUsdt } from './usdt.ts'
 
 // All callers must pass requireAdmin in commerce.ts. No public test route exists.
 async function view(env: Env, o: Order) {
   const p = await findPayment(env, o.id)
   const refund = await env.INTEREST_DB.prepare('SELECT id,status,version FROM refund_cases WHERE order_id=? ORDER BY created_at DESC LIMIT 1').bind(o.id).first()
   const events = (await env.INTEREST_DB.prepare('SELECT action,note,created_at FROM order_events WHERE order_id=? ORDER BY order_version').bind(o.id).all()).results
-  return { id: o.id, email: o.customer_email, amountCents: o.price_cents, paymentStatus: o.payment_status, status: o.status, refundedCents: o.refunded_cents, refundHold: Boolean(o.refund_hold), createdAt: o.created_at, payment: p ? { provider: p.provider, status: p.state, qr: p.state === 'pending' && p.expires_at > Date.now() ? p.qr : null, expiresAt: p.expires_at, notifiedAt: p.notified_at, tradeNo: p.trade_no } : null, refund, events }
+  return { id: o.id, email: o.customer_email, amountCents: o.price_cents, paymentStatus: o.payment_status, status: o.status, refundedCents: o.refunded_cents, refundHold: Boolean(o.refund_hold), createdAt: o.created_at, payment: p ? { provider: p.provider, status: p.state, qr: p.state === 'pending' && p.expires_at > Date.now() ? p.qr : null, expiresAt: p.expires_at, notifiedAt: p.notified_at, tradeNo: p.trade_no, ...(p.provider === 'usdt' && p.expected_raw ? { expectedUsdt: formatUsdt(p.expected_raw) } : {}) } : null, refund, events }
 }
 function internal(request: Request, path: string, data: unknown) {
   const origin = new URL(request.url).origin

@@ -14,9 +14,10 @@ import type { ServerOrder } from '@/lib/use-store'
 import type { CheckoutProps } from './checkout'
 import { PaymentConfirmed, PaymentMessage } from './payment-feedback'
 import { membershipClaimUrl } from '../../shared/membership-claim'
+import { publicTronAddress } from '../../shared/public-payment'
 import '@/styles/live-checkout.css'
 
-type Payment = { amountCents?: number; feeCents?: number; feeBps?: number; provider?: string; status: string; qr: string | null; expiresAt: number }
+type Payment = { amountCents?: number; feeCents?: number; feeBps?: number; provider?: string; status: string; qr: string | null; expiresAt: number; expectedUsdt?: string }
 export function ManualCheckout({ order, open, onUpdated, onOrderUpdated, onOrders, refreshTarget, refreshDisabled }: CheckoutProps & { order: ServerOrder }) {
   const [payment, setPayment] = useState<Payment | null>(null)
   const [methods, setMethods] = useState<PaymentMethodOption[]>([])
@@ -34,8 +35,10 @@ export function ManualCheckout({ order, open, onUpdated, onOrderUpdated, onOrder
   const emailDelivery = Boolean(order.delivery)
   const automatic = Boolean(order.delivery?.automatic)
   const paused = order.redemptionBlocked || order.refundHold || (order.refundedCents ?? 0) >= Math.round(order.price * 100)
+  const usdt = payment?.provider === 'usdt'
   const expired = payment !== null && payment.expiresAt <= Date.now()
-  const qr = !paused && !expired && order.status === 'pending' && payment?.status === 'pending' ? payment.qr : null
+  // A USDT QR is a bare address; only a well-formed TRON address may render.
+  const qr = !paused && !expired && order.status === 'pending' && payment?.status === 'pending' ? usdt ? publicTronAddress(payment.qr) : payment.qr : null
   useEffect(() => {
     let active = true
     if (qr) void qrToString(qr, { type: 'svg', width: 156, margin: 4 })
@@ -76,7 +79,7 @@ export function ManualCheckout({ order, open, onUpdated, onOrderUpdated, onOrder
     {error && <p role="alert" className="copy-error">{error}</p>}
     {paused ? <div className="order-service-paused">本订单暂时暂停处理，请联系支持或查看售后进度。</div> : <>
       {order.status === 'pending' && <>
-        {!payment ? <PaymentMethodChoices baseCents={Math.round(order.price * 100)} methods={methods} busy={busy} onChoose={method => void refresh('create', method)} /> : qr ? <div className="live-pay-card"><div className="live-pay-header"><div className="live-pay-brand"><PaymentLogo method={payment?.provider?.endsWith('-wxpay') ? 'wxpay' : 'alipay'} /><strong>{channel.name}</strong></div></div><div className="live-pay-body"><div className="live-qr-frame">{qrImage && <img src={qrImage} width={156} height={156} alt={`${channel.name}付款二维码`} />}</div><div className="live-pay-details"><div className="live-pay-amount"><span className="live-pay-amount-label">应付金额</span><strong className="live-pay-amount-value"><small>¥</small>{((payment?.amountCents ?? order.paymentSummary?.amountCents ?? Math.round(order.price * 100)) / 100).toFixed(2)}</strong></div>{Boolean(payment?.feeCents) && <p className="live-pay-tip">商品 ¥{order.price.toFixed(2)} + 平台手续费 ¥{((payment?.feeCents ?? 0) / 100).toFixed(2)}（{(payment?.feeBps ?? 0) / 100}%）</p>}<p className="live-pay-tip">{xgift ? '扫码付款，确认后自动开始充值。' : gmail ? '付款确认后，账号资料自动发送至下单邮箱。' : automatic ? '付款确认后自动发货，订单页和邮箱均可领取。' : emailDelivery ? '付款后由工作人员将商品发至下单邮箱。' : '付款后由专人协助开通 Pro 25×。'}</p><Button nativeButton={false} className="live-mobile-action" render={<a href={qr} target="_blank" rel="noopener noreferrer" />}>{channel.action} <ExternalLink size={13} /></Button></div></div>{xgift && <div className="live-pay-footer"><span className="live-watch"><i aria-hidden="true" />等待付款，状态自动更新</span></div>}</div>
+        {!payment ? <PaymentMethodChoices baseCents={Math.round(order.price * 100)} methods={methods} busy={busy} onChoose={method => void refresh('create', method)} /> : qr ? <div className="live-pay-card"><div className="live-pay-header"><div className="live-pay-brand"><PaymentLogo method={usdt ? 'usdt' : payment?.provider?.endsWith('-wxpay') ? 'wxpay' : 'alipay'} /><strong>{channel.name}</strong></div></div><div className="live-pay-body"><div className="live-qr-frame">{qrImage && <img src={qrImage} width={156} height={156} alt={usdt ? 'USDT 收款地址二维码' : `${channel.name}付款二维码`} />}</div><div className="live-pay-details">{usdt && payment?.expectedUsdt ? <div className="live-pay-amount"><span className="live-pay-amount-label">应付金额</span><strong className="live-pay-amount-value"><small>USDT </small>{payment.expectedUsdt}</strong></div> : <div className="live-pay-amount"><span className="live-pay-amount-label">应付金额</span><strong className="live-pay-amount-value"><small>¥</small>{((payment?.amountCents ?? order.paymentSummary?.amountCents ?? Math.round(order.price * 100)) / 100).toFixed(2)}</strong></div>}{Boolean(payment?.feeCents) && <p className="live-pay-tip">商品 ¥{order.price.toFixed(2)} + 平台手续费 ¥{((payment?.feeCents ?? 0) / 100).toFixed(2)}（{(payment?.feeBps ?? 0) / 100}%）</p>}{usdt ? <p className="live-pay-tip">金额含唯一对账尾数，请精确转账（TRC20）；到账约 1 分钟自动确认，请勿在有效期结束后转账。</p> : <p className="live-pay-tip">{xgift ? '扫码付款，确认后自动开始充值。' : gmail ? '付款确认后，账号资料自动发送至下单邮箱。' : automatic ? '付款确认后自动发货，订单页和邮箱均可领取。' : emailDelivery ? '付款后由工作人员将商品发至下单邮箱。' : '付款后由专人协助开通 Pro 25×。'}</p>}{usdt && qr ? <div className="membership-delivery-actions"><CopyButton variant="outline" value={qr} label="复制收款地址" /><CopyButton variant="outline" value={payment.expectedUsdt ?? qr} label="复制应转金额" /></div> : <Button nativeButton={false} className="live-mobile-action" render={<a href={qr} target="_blank" rel="noopener noreferrer" />}>{channel.action} <ExternalLink size={13} /></Button>}</div></div>{xgift && <div className="live-pay-footer"><span className="live-watch"><i aria-hidden="true" />等待付款，状态自动更新</span></div>}</div>
           : <PaymentMessage state={expired ? 'expired' : error ? 'idle' : 'loading'} title={expired ? '付款有效期已结束' : error ? '付款入口暂未准备好' : '正在准备付款二维码'}>{!expired && error && !busy && payment?.status === 'pending' && <Button variant="outline" disabled={busy} onClick={() => void refresh('create')}>重新获取付款码</Button>}{expired ? '如已付款，请刷新核对结果，勿重复支付。' : !error ? '请稍候，付款二维码准备好后会自动显示。' : xgift ? '付款确认后将自动开始充值。' : emailDelivery ? '可刷新进度重试；付款后请等待邮件发货。' : '可刷新进度重试；付款后由专人协助开通。'}</PaymentMessage>}
       </>}
       {xgift && payment && order.status === 'pending' && <Button variant="ghost" disabled={busy} onClick={() => void refresh('close')}>关闭未付款订单</Button>}

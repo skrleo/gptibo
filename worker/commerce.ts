@@ -13,7 +13,7 @@ import { authRoute, requireAdmin } from './admin-auth.ts'
 import { emailValue, mailConfigured, partnerAuth } from './partner-auth.ts'
 import { adminPartnerRoutes, partnerCatalog, partnerRoutes, resolvePartner } from './partners.ts'
 import { paymentAction, reconcilePayments } from './payments/service.ts'
-import { alipayConfigured } from './payments/providers.ts'
+import { alipayConfigured, availablePaymentMethods, usdtConfigured } from './payments/providers.ts'
 import { paymentTesting } from './payments/testing.ts'
 import { supportContactsRoute, supportContactsSettings } from './support-contacts.ts'
 import { checkoutEnabled as supplierCheckoutEnabled, configured as supplierConfigured, productMap, RechargeError } from './recharge/client.ts'
@@ -103,7 +103,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       const offers = (catalog.plans as Plan[]).map(plan => ({ ...plan, enabled: plan.enabled && (
         isXGiftPlan(plan.id) ? xgiftCheckoutEnabled(env) : plan.id === 'gmail-account' ? gmail : isDeliverySupplierPlan(plan.id) ? delivery_supplier : emailProduct(plan.id) ? email : testing || (live && Boolean(mapped[plan.id]))
       ) ? 1 : 0 }))
-      return json({ ...catalog, supportContacts: support.contacts, announcement, plans: offers, mode: live ? 'live' : 'demo', checkoutEnabled: testing || live || email || xgiftCheckoutEnabled(env), testingEnabled: testing }, 200, { 'Server-Timing': `catalog;dur=${(performance.now() - started).toFixed(1)}` })
+      return json({ ...catalog, supportContacts: support.contacts, announcement, plans: offers, mode: live ? 'live' : 'demo', checkoutEnabled: testing || live || email || xgiftCheckoutEnabled(env), testingEnabled: testing, paymentMethods: availablePaymentMethods(env) }, 200, { 'Server-Timing': `catalog;dur=${(performance.now() - started).toFixed(1)}` })
     }
     if (path === '/api/orders/client' && method === 'POST') {
       await body(request)
@@ -241,7 +241,7 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
     const stats = await db.prepare("SELECT COUNT(*) total, SUM(CASE WHEN status='pending' THEN 1 ELSE 0 END) pending, SUM(CASE WHEN status IN ('session','processing','failed') AND refunded_cents<price_cents THEN 1 ELSE 0 END) active, SUM(CASE WHEN status='success' THEN 1 ELSE 0 END) completed, COALESCE(SUM(CASE WHEN mode='demo' AND payment_status='simulated' THEN price_cents ELSE 0 END),0) demo_amount, COALESCE(SUM(CASE WHEN mode='live' AND payment_status='paid' THEN price_cents-MAX(refunded_cents,COALESCE((SELECT t.refunded_cents FROM recharge_orders t WHERE t.order_id=orders.id),0)) ELSE 0 END),0) paid_amount, COALESCE(SUM(CASE WHEN mode='live' THEN MAX(refunded_cents,COALESCE((SELECT t.refunded_cents FROM recharge_orders t WHERE t.order_id=orders.id),0)) ELSE 0 END),0) refund_amount FROM orders WHERE is_test=0").first()
     const interest = await db.prepare('SELECT COUNT(*) total FROM launch_interest').first()
     const recent = (await db.prepare('SELECT orders.*, (SELECT status FROM partner_payouts WHERE id=orders.payout_id) settlement_status FROM orders WHERE is_test=0 ORDER BY created_at DESC LIMIT 6').all<AdminOrder>()).results
-    return json({ stats, interest, recent: await Promise.all(recent.map(o => adminOrder(env, o))), integrations: { alipay: alipayConfigured(env), supplier: supplierConfigured(env), supplierCheckout: supplierCheckoutEnabled(env), resend: mailConfigured(env) }, mode: supplierCheckoutEnabled(env) ? 'live' : 'demo' })
+    return json({ stats, interest, recent: await Promise.all(recent.map(o => adminOrder(env, o))), integrations: { alipay: alipayConfigured(env), usdt: usdtConfigured(env), supplier: supplierConfigured(env), supplierCheckout: supplierCheckoutEnabled(env), resend: mailConfigured(env) }, mode: supplierCheckoutEnabled(env) ? 'live' : 'demo' })
   }
   if (path === '/api/admin/orders' && method === 'GET') {
     await settleDue(env)
