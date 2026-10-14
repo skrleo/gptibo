@@ -7,6 +7,9 @@
   ],
   "workers_dev": false,
   "preview_urls": false,
+  "triggers": {
+    "crons": ["* * * * *"]
+  },
   "vars": {
     "ORDER_TESTING_ENABLED": "false",
     "EMAIL_PRODUCTS_ENABLED": "false",

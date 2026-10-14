@@ -102,7 +102,7 @@ export async function paymentAction(request: Request, env: Env, order: Order, ad
   if (!['create', 'query', 'close', 'options'].includes(String(data.action))) throw new ApiError('支付操作无效。')
   if (order.redemption_blocked && data.action === 'create') throw new ApiError('本订单已禁止再次兑换，请联系支持。', 409)
   if (order.mode !== 'live') throw new ApiError('历史测试记录不能发起收款。', 409)
-  const canCreate = (isXGiftPlan(order.plan) ? xgiftCheckoutEnabled(env) : order.plan === 'gmail-account' ? gmailCheckoutEnabled(env) : isDeliverySupplierPlan(order.plan) ? (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env)) : emailProduct(order.plan) ? emailCheckoutEnabled(env) : env.PAYMENT_CHECKOUT_ENABLED === 'true') || (adminTest && order.is_test === 1 && order.price_cents === 1 && !order.partner_id && env.PAYMENT_TEST_ENABLED === 'true')
+  const canCreate = (isXGiftPlan(order.plan) ? xgiftCheckoutEnabled(env) : order.plan === 'gmail-account' ? (gmailCheckoutEnabled(env) || emailCheckoutEnabled(env)) : isDeliverySupplierPlan(order.plan) ? (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env)) : emailProduct(order.plan) ? emailCheckoutEnabled(env) : env.PAYMENT_CHECKOUT_ENABLED === 'true') || (adminTest && order.is_test === 1 && order.price_cents === 1 && !order.partner_id && env.PAYMENT_TEST_ENABLED === 'true')
   if (!(await env.INTEREST_LIMITER.limit({ key: 'payment:' + order.owner_hash })).success) throw new ApiError('操作较频繁，请稍后再试。', 429)
   if (data.action === 'options') {
     const payment = await findPayment(env, order.id)
