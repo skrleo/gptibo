@@ -101,7 +101,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       ])
       // Storefront prices are configured retail prices, independent of supplier latency.
       const offers = (catalog.plans as Plan[]).map(plan => ({ ...plan, enabled: plan.enabled && (
-        isXGiftPlan(plan.id) ? xgiftCheckoutEnabled(env) : plan.id === 'gmail-account' ? gmail : isDeliverySupplierPlan(plan.id) ? delivery_supplier : emailProduct(plan.id) ? email : testing || (live && Boolean(mapped[plan.id]))
+        isXGiftPlan(plan.id) ? xgiftCheckoutEnabled(env) : plan.id === 'gmail-account' ? gmail : isDeliverySupplierPlan(plan.id) ? (delivery_supplier || (emailProduct(plan.id) ? email : false)) : emailProduct(plan.id) ? email : testing || (live && Boolean(mapped[plan.id]))
       ) ? 1 : 0 }))
       return json({ ...catalog, supportContacts: support.contacts, announcement, plans: offers, mode: live ? 'live' : 'demo', checkoutEnabled: testing || live || email || xgiftCheckoutEnabled(env), testingEnabled: testing, paymentMethods: availablePaymentMethods(env) }, 200, { 'Server-Timing': `catalog;dur=${(performance.now() - started).toFixed(1)}` })
     }
@@ -150,7 +150,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
         return json({ order: await customerOrder(env, existing) })
       }
       const emailDelivery = Boolean(emailProduct(data.plan))
-      const live = isXGiftPlan(data.plan) ? xgiftCheckoutEnabled(env) : data.plan === 'gmail-account' ? gmailCheckoutEnabled(env) : isDeliverySupplierPlan(data.plan) ? delivery_supplierCheckoutEnabled(env) : emailDelivery ? emailCheckoutEnabled(env) : supplierCheckoutEnabled(env)
+      const live = isXGiftPlan(data.plan) ? xgiftCheckoutEnabled(env) : data.plan === 'gmail-account' ? gmailCheckoutEnabled(env) : isDeliverySupplierPlan(data.plan) ? (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env)) : emailDelivery ? emailCheckoutEnabled(env) : supplierCheckoutEnabled(env)
       if (emailDelivery && !live) throw new ApiError('邮件交付商品暂未开放购买。', 409)
       if (env.ORDER_TESTING_ENABLED !== 'true' && !live) throw new ApiError('该服务暂未开放购买，请稍后再来。', 409)
       const plan = await env.INTEREST_DB.prepare('SELECT * FROM catalog_plans WHERE id=? AND enabled=1').bind(data.plan).first<Plan>()
@@ -162,7 +162,9 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       if (data.expectedPrice !== (offer?.price_cents ?? plan.price_cents)) throw new ApiError('套餐价格已更新，请刷新后重新确认。', 409)
       const price = offer?.price_cents ?? plan.price_cents
       const snapshot = live && !emailDelivery && !isXGiftPlan(plan.id) ? await supplierSnapshot(env, plan.id, price, offer?.cost_cents) : null
-      const delivery_supplier = isDeliverySupplierPlan(plan.id) ? await delivery_supplierSnapshot(env, plan.id, price, offer?.cost_cents, plan.delivery_instructions) : null
+      // Only supplier-sourced orders take the procurement path; without the
+      // supplier integration these products fall back to email delivery.
+      const delivery_supplier = isDeliverySupplierPlan(plan.id) && delivery_supplierCheckoutEnabled(env) ? await delivery_supplierSnapshot(env, plan.id, price, offer?.cost_cents, plan.delivery_instructions) : null
       const gmail = plan.id === 'gmail-account' ? await gmailSnapshot(env, price, offer?.cost_cents, plan.delivery_instructions) : null
       const xgift = isXGiftPlan(plan.id) ? await xgiftSnapshot(env, ownerHash, data) : null
       const id = 'YMX-' + crypto.randomUUID().replaceAll('-', '').toUpperCase(); const eventId = crypto.randomUUID(); const now = Date.now()
