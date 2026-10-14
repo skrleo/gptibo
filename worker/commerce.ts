@@ -110,6 +110,8 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       const token = readCookie(request, 'buyer') ?? randomToken()
       return json({ ok: true }, 200, { 'Set-Cookie': cookie(request, 'buyer', token, 365 * 86400) })
     }
+    // The sanitized build ships no captcha provider; the storefront widget hides itself when disabled.
+    if (path === '/api/orders/verification' && method === 'GET') return json({ enabled: false })
     if (!path.startsWith('/api/orders')) throw new ApiError('未找到接口。', 404)
     const recovery = await recoveryRoutes(request, env, path)
     if (recovery) return recovery

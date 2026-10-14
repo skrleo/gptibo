@@ -58,6 +58,15 @@ async function accountingOrder(s: Awaited<ReturnType<typeof setup>>, buyer: stri
   return order.id as string
 }
 
+test('verification config is public and reports the captcha as disabled without a buyer session', async () => {
+  const s = await setup()
+  for (const query of ['', '?purpose=auth']) {
+    const response = await s.request('/api/orders/verification' + query)
+    assert.equal(response.status, 200)
+    assert.deepEqual(await response.json(), { enabled: false })
+  }
+})
+
 test('accounting report subtracts earned agent commissions and separates paid unfinished and unpaid orders', async t => {
   const s = await setup(); t.after(() => s.db.close()); const buyer = await s.buyer(); const admin = await s.login()
   const now = Date.now()
