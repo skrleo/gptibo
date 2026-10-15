@@ -3,7 +3,7 @@ import type { Env } from './platform.ts'
 import { membershipClaimUrl } from '../shared/membership-claim.ts'
 import { boundedResponseText } from './bounded-response.ts'
 
-export type VerificationKind = Exclude<keyof typeof emailTemplates, 'partner-welcome' | 'recharge-reminder' | 'delivery-link' | 'delivery-cdk' | 'delivery-duolingo-link' | 'delivery-gmail'>
+export type VerificationKind = Exclude<keyof typeof emailTemplates, 'partner-welcome' | 'recharge-reminder' | 'security-alert' | 'delivery-link' | 'delivery-cdk' | 'delivery-duolingo-link' | 'delivery-gmail'>
 
 export function membershipDeliveryMessage(kind: 'link' | 'cdk', orderId: string, value: string, instructions: string, plan?: string) {
   const claimUrl = plan === 'gmail-account' ? null : membershipClaimUrl(value)
@@ -32,6 +32,24 @@ export function rechargeReminderMessage(details: RechargeReminderDetails) {
 
 export async function sendRechargeReminderEmail(env: Env, to: string, message: ReturnType<typeof rechargeReminderMessage>, id: string) {
   await sendEmail(env, to, message, 'recharge-reminder/' + id)
+}
+
+export type SecurityAlertDetails = { window: string; totals: string; routes: string }
+export function securityAlertMessage(details: SecurityAlertDetails) {
+  const values: Record<string, string> = {
+    '__SECURITY_ALERT_WINDOW__': details.window,
+    '__SECURITY_ALERT_TOTALS__': details.totals,
+    '__SECURITY_ALERT_ROUTES__': details.routes,
+  }
+  const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]!)
+  const template = emailTemplates['security-alert']
+  // One pass prevents route or account text from being interpreted as another placeholder.
+  const pattern = /__SECURITY_ALERT_(?:WINDOW|TOTALS|ROUTES)__/g
+  return { subject: template.subject, html: template.html.replace(pattern, key => escape(values[key]).replaceAll('\n', '<br />')), text: template.text.replace(pattern, key => values[key]) }
+}
+
+export async function sendSecurityAlertEmail(env: Env, to: string, message: ReturnType<typeof securityAlertMessage>, windowId: string) {
+  await sendEmail(env, to, message, 'security-alert/' + windowId)
 }
 
 export async function sendMembershipPreviewEmail(env: Env, to: string, message: ReturnType<typeof membershipDeliveryMessage>, id: string) {

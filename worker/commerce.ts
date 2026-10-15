@@ -28,6 +28,7 @@ import { invoiceRoutes } from './invoices.ts'
 import { publicAnnouncement } from './announcements.ts'
 import { rechargeReminderPreview } from './recharge-reminders.ts'
 import { adminGmailOrder, confirmGmailNotPurchased, fulfillGmail, gmailCheckoutEnabled, gmailProductsRoute, gmailSnapshot, gmailSnapshotStatement } from './account_supplier/service.ts'
+import { securitySummary } from './security-audit.ts'
 
 type Plan = { delivery_instructions: string; partner_enabled: number; id: string; product_id: string; name: string; price_cents: number; enabled: number; renewal_only: number; version: number }
 type OrderPartnerSource = { id: string; slug: string; name: string; email: string; wechat: string; qq: string }
@@ -348,5 +349,6 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
     const rows = (await db.prepare("SELECT * FROM admin_audit WHERE action='plan-update' ORDER BY created_at DESC LIMIT 100").all()).results
     return json({ rows })
   }
+  if (path === '/api/admin/security' && method === 'GET') return json(await securitySummary(env))
   throw new ApiError('未找到管理接口。', 404)
 }
