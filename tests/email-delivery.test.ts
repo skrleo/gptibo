@@ -9,7 +9,7 @@ type Context = Parameters<Parameters<typeof test>[1]>[0]
 const keys = generateKeyPairSync('rsa', { modulusLength: 2048 })
 async function setup(t: Context, plan = 'gemini-pro-18m') {
   const s = await customerFixture(); t.after(() => s.db.close())
-  Object.assign(s.env, { ORDER_TESTING_ENABLED: 'false', EMAIL_PRODUCTS_ENABLED: 'true', RESEND_API_KEY: 'test-mail-key', RESEND_FROM: 'GPTibo <delivery@example.test>', PAYMENT_NOTIFY_ORIGIN: 'https://shop.example.invalid', ALIPAY_APP_ID: '2026000000000000', ALIPAY_SELLER_ID: '2088000000000000', ALIPAY_APP_PRIVATE_KEY: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), ALIPAY_PUBLIC_KEY: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString() })
+  Object.assign(s.env, { ORDER_TESTING_ENABLED: 'false', EMAIL_PRODUCTS_ENABLED: 'true', RESEND_API_KEY: 'test-mail-key', RESEND_FROM: 'Gift2Card <delivery@example.test>', PAYMENT_NOTIFY_ORIGIN: 'https://shop.example.invalid', ALIPAY_APP_ID: '2026000000000000', ALIPAY_SELLER_ID: '2088000000000000', ALIPAY_APP_PRIVATE_KEY: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), ALIPAY_PUBLIC_KEY: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString() })
   Object.assign(s.env, { DELIVERY_SUPPLIER_API_KEY: 'test-supplier-key', DELIVERY_SUPPLIER_CNY_PER_USD: '6.7', DELIVERY_SUPPLIER_CHECKOUT_ENABLED: 'true' })
   t.mock.method(globalThis, 'fetch', async () => Response.json({ services: [{ service_id: 'DEMO_PRODUCT_A', name: 'Gemini 18M', price: 0.6, stock: 10 }, { service_id: 'DEMO_PRODUCT_B', name: 'Duolingo 1Y', price: 0.38, stock: 10 }] }))
   const buyer = (await s.request('/api/orders/client', {})).headers.get('set-cookie')!.split(';')[0]

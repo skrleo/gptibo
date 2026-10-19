@@ -1,11 +1,11 @@
-# GPTibo
+# Gift2Card
 
 **可自托管的数字商品商城，包含用户前台、管理后台与代理工作台。**
 
 [![CI](https://github.com/CoolkHz/gptibo/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/CoolkHz/gptibo/actions/workflows/verify.yml)
 [MIT License](LICENSE) · [快速开始](#快速开始) · [后端文档](services/storefront/README.md) · [安全说明](SECURITY.md)
 
-GPTibo 将商品展示、下单支付、订单交付、售后处理和代理商店管理整合在同一套系统中。前端使用 React 与 TypeScript，后端提供 Go + PostgreSQL 和 Cloudflare Workers + D1 两种实现，便于按部署环境选择和二次开发。
+Gift2Card 将商品展示、下单支付、订单交付、售后处理和代理商店管理整合在同一套系统中。前端使用 React 与 TypeScript，后端提供 Go + PostgreSQL 和 Cloudflare Workers + D1 两种实现，便于按部署环境选择和二次开发。
 
 原站点已停止运营，项目现以 MIT 许可证开放源码。支付与供应商接入使用匿名适配器，需要配置自己的服务后使用。
 

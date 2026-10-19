@@ -35,7 +35,7 @@ test('partner invitation contains a durable login link and instructions without 
   assert.doesNotMatch(mail.text, /\b\d{6}\b/)
   assert.match(mail.html, /prefers-color-scheme: dark/)
   assert.doesNotMatch(mail.html, /<script|<svg|<iframe|onclick=/i)
-  const env = { RESEND_FROM: 'GPTibo <noreply@shop.example.invalid>', RESEND_API_KEY: 'test' } as Env
+  const env = { RESEND_FROM: 'Gift2Card <noreply@shop.example.invalid>', RESEND_API_KEY: 'test' } as Env
   t.mock.method(globalThis, 'fetch', async (_url: string, options: RequestInit) => {
     assert.equal(new Headers(options.headers).get('Idempotency-Key'), 'partner-welcome/invitation')
     const payload = JSON.parse(String(options.body))
@@ -48,7 +48,7 @@ test('partner invitation contains a durable login link and instructions without 
 })
 
 test('Resend receives HTML and text together with stable idempotency and delivery errors propagate', async t => {
-  const env = { RESEND_FROM: 'GPTibo <noreply@shop.example.invalid>', RESEND_API_KEY: 'test' } as Env
+  const env = { RESEND_FROM: 'Gift2Card <noreply@shop.example.invalid>', RESEND_API_KEY: 'test' } as Env
   t.mock.method(globalThis, 'fetch', async (url: string, options: RequestInit) => {
     assert.equal(url, 'https://api.resend.com/emails')
     assert.equal(new Headers(options.headers).get('Idempotency-Key'), 'order-recovery/challenge')

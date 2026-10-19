@@ -353,7 +353,7 @@ test('administrator configuration, authentication, CSRF, credential rotation and
 })
 
 function adminMail(t: Parameters<Parameters<typeof test>[1]>[0], s: Awaited<ReturnType<typeof setup>>) {
-  s.env.RESEND_API_KEY = 'test'; s.env.RESEND_FROM = 'GPTibo <noreply@shop.example.invalid>'
+  s.env.RESEND_API_KEY = 'test'; s.env.RESEND_FROM = 'Gift2Card <noreply@shop.example.invalid>'
   const mails: { to: string[]; text: string; html: string; subject: string }[] = []
   t.mock.method(globalThis, 'fetch', async (url: string, options: RequestInit) => {
     assert.equal(url, 'https://api.resend.com/emails')

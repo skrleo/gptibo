@@ -21,7 +21,7 @@ func PlatformBrand(origin string) Brand {
 	if origin == "" {
 		origin = "https://shop.example.invalid"
 	}
-	return Brand{Name: "GPTibo", Logo: origin + "/email-logo.png", OrdersURL: origin + "/orders", WorkspaceURL: origin + "/join", AdminURL: origin + "/admin"}
+	return Brand{Name: "Gift2Card", Logo: origin + "/email-logo.png", OrdersURL: origin + "/orders", WorkspaceURL: origin + "/join", AdminURL: origin + "/admin"}
 }
 
 type brandKey struct{}

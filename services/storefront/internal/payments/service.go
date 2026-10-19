@@ -72,9 +72,9 @@ func (s Service) notifyURL(ids ...string) (string, error) {
 	return s.NotifyOrigin + "/api/payments/notify/" + id, nil
 }
 func details(p Payment, o orders.Order) Order {
-	subject := "GPTibo · " + o.PlanName
+	subject := "Gift2Card · " + o.PlanName
 	if o.Test != 0 {
-		subject = "GPTibo · 支付联调测试（不交付商品）"
+		subject = "Gift2Card · 支付联调测试（不交付商品）"
 	}
 	trade := ""
 	if p.TradeNo != nil {

@@ -7,7 +7,7 @@ export const emailBrand = {
   admin: '__RECHARGE_BRAND_ADMIN_URL__',
 }
 export const platformEmailFields: Record<string, string> = {
-  BRAND_NAME: 'GPTibo',
+  BRAND_NAME: 'Gift2Card',
   BRAND_LOGO: 'https://shop.example.invalid/email-logo.png',
   BRAND_ORDERS_URL: 'https://shop.example.invalid/orders',
   BRAND_WORKSPACE_URL: 'https://shop.example.invalid/join',

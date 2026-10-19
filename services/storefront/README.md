@@ -1,4 +1,4 @@
-# GPTibo Go 后端
+# Gift2Card Go 后端
 
 Go + Gin + PostgreSQL，API 与业务 Worker 使用同一个二进制。此版本仅面向全新安装；匿名化后的迁移与原部署不兼容，不导入生产快照。
 

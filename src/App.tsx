@@ -62,13 +62,13 @@ function App() {
   const store = useStore(page)
   const partnerSlug = store.partner?.slug
   const platformBrand = store.catalogReady && !store.partner
-  const brandName = store.partner?.brandName || (platformBrand ? 'GPTibo' : t('商店'))
+  const brandName = store.partner?.brandName || (platformBrand ? 'Gift2Card' : t('商店'))
   const brandLogo = store.partner?.logo || ''
   const pageTitle = store.partner?.pageTitle
   const description = store.partner?.description || t('AI 订阅、语言学习与工具服务，在这里按需选择。')
   useEffect(() => {
     document.querySelector('meta[name="description"]')?.setAttribute('content', description)
-    document.title = pageTitle || (platformBrand ? translateStorefront(locale, 'GPTibo · 会员订阅与工具服务') : brandName)
+    document.title = pageTitle || (platformBrand ? translateStorefront(locale, 'Gift2Card · 会员订阅与工具服务') : brandName)
     const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]')
     if (icon) { icon.href = brandLogo || (platformBrand ? '/favicon.svg' : '/brands/shop.svg'); icon.type = brandLogo ? 'image/png' : 'image/svg+xml' }
   }, [brandName, platformBrand, brandLogo, locale, pageTitle, description])
