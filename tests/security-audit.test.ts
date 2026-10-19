@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import worker from '../worker/index.ts'
 import { customerFixture } from './customer-fixture.ts'
 import { sendDueSecurityAlerts, pruneSecurityAudit } from '../worker/security-audit.ts'
-import type { Env } from '../worker/platform.ts'
+import { hash, type Env } from '../worker/platform.ts'
 
 const WINDOW_MS = 15 * 60_000
 const insertEvent = (s: Awaited<ReturnType<typeof customerFixture>>, values: Record<string, unknown>) => {
@@ -23,6 +23,14 @@ test('unauthenticated admin access is audited exactly once and the read endpoint
   assert.equal(summary.enabled, true)
   assert.equal(summary.events.length, 1)
   assert.equal(summary.events[0].route, '/api/admin/security')
+})
+
+test('order identifiers enter the audit only as fingerprints', async t => {
+  const s = await customerFixture(); t.after(() => s.db.close())
+  assert.equal((await s.request('/api/orders/YMX-TEST123')).status, 401)
+  const rows = s.db.prepare('SELECT route,target FROM security_events').all()
+  assert.equal(rows.length, 1)
+  assert.deepEqual([{ ...rows[0] }], [{ route: '/api/orders/YMX-TEST123', target: (await hash('security-audit-target:YMX-TEST123')).slice(0, 16) }])
 })
 
 test('failed logins are audited with the attempted username until the 15 minute budget trips a block', async t => {

@@ -16,7 +16,11 @@ type SecurityEvent = { kind: SecurityKind; status: number; account?: string }
 
 const roleOf = (path: string) => path.startsWith('/api/admin/') ? 'admin' : path.startsWith('/api/partner/') ? 'partner' : 'public'
 const requestIdOf = (request: Request) => request.headers.get('cf-ray')?.slice(0, 64) || crypto.randomUUID()
-const orderTarget = (path: string) => path.match(/\/orders\/([A-Za-z0-9-]{1,64})(?:\/|$)/)?.[1] ?? ''
+// Like the Go backend, only a fingerprint of the order identifier is stored.
+const orderTarget = async (path: string) => {
+  const id = path.match(/\/orders\/([A-Za-z0-9-]{1,64})(?:\/|$)/)?.[1]
+  return id ? (await hash('security-audit-target:' + id)).slice(0, 16) : ''
+}
 
 /** Best-effort audit write: a logging failure must never break the guarded request. */
 export async function recordSecurityEvent(env: Env, request: Request, event: SecurityEvent) {
@@ -28,7 +32,7 @@ export async function recordSecurityEvent(env: Env, request: Request, event: Sec
       crypto.randomUUID(), Date.now(), event.kind,
       (await hash(request.headers.get('CF-Connecting-IP') ?? 'local')).slice(0, 16),
       requestIdOf(request), path, request.method, event.status, roleOf(path),
-      (event.account ?? '').slice(0, 80), session ? (await hash(session)).slice(0, 12) : '', orderTarget(path),
+      (event.account ?? '').slice(0, 80), session ? (await hash(session)).slice(0, 12) : '', await orderTarget(path),
     ).run()
   } catch { /* audit gaps are preferable to failed responses */ }
 }
