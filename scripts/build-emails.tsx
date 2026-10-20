@@ -31,18 +31,18 @@ for (const kind of Object.keys(verificationCopy) as VerificationKind[]) {
 }
 const reminderHtml = await render(createElement(RechargeReminderEmail))
 const partnerOrderHtml = await render(createElement(PartnerOrderCompletedEmail))
-templates['partner-order-completed'] = { subject: '__RECHARGE_BRAND_NAME__ · 你的商店有一笔订单已完成', html: partnerOrderHtml, text: toPlainText(partnerOrderHtml) }
+templates['partner-order-completed'] = { subject: '__RECHARGE_BRAND_NAME__ · 你的商店有一笔订单已完成 / New completed order in your store', html: partnerOrderHtml, text: toPlainText(partnerOrderHtml) }
 if (preview) {
   const sample = platformEmail(partnerOrderHtml).replaceAll('__RECHARGE_SHOP_NAME__', '星河商店').replaceAll('__RECHARGE_ORDER_PRODUCT__', 'ChatGPT · Pro 5× · 按月订阅').replaceAll('__RECHARGE_ORDER_AMOUNT__', '¥699.00').replaceAll('__RECHARGE_ORDER_CUSTOMER__', 'customer@example.test').replaceAll('__RECHARGE_ORDER_COMPLETED__', '2026/10/08 16:30:00').replaceAll('__RECHARGE_ORDER_ID__', 'YMX-0123456789ABCDEF0123456789ABCDEF')
   await writeFile(new URL('../artifacts/emails/partner-order-completed.html', import.meta.url), sample)
 }
 const gmailHtml = await render(createElement(GmailDeliveryEmail))
-templates['delivery-gmail'] = { subject: 'Gmail 账号 · 账号资料已发货', html: gmailHtml, text: toPlainText(gmailHtml) }
+templates['delivery-gmail'] = { subject: 'Gmail 账号 · 账号资料已发货 / Your Gmail account details', html: gmailHtml, text: toPlainText(gmailHtml) }
 if (preview) await writeFile(new URL('../artifacts/emails/delivery-gmail.html', import.meta.url), platformEmail(gmailHtml).replaceAll('__RECHARGE_DELIVERY_ORDER__', 'YMX-PREVIEW').replaceAll('__RECHARGE_DELIVERY_VALUE__', 'demo@example.test----DEMO-PASSWORD----DEMO-2FA').replaceAll('__RECHARGE_DELIVERY_INSTRUCTIONS__', '此为测试预览，账号资料无效。请通过原订单联系支持。'))
 for (const { id, kind, product, subject } of [
-  { id: 'delivery-link', kind: 'link', product: 'gemini', subject: 'Gemini Pro 18 个月会员 · 领取链接已发货' },
-  { id: 'delivery-cdk', kind: 'cdk', product: 'duolingo', subject: '多邻国 1 年会员 · 兑换 CDK 已发货' },
-  { id: 'delivery-duolingo-link', kind: 'link', product: 'duolingo', subject: '多邻国 1 年会员 · 领取链接已发货' },
+  { id: 'delivery-link', kind: 'link', product: 'gemini', subject: 'Gemini Pro 18 个月会员 · 领取链接已发货 / Your Gemini Pro claim link' },
+  { id: 'delivery-cdk', kind: 'cdk', product: 'duolingo', subject: '多邻国 1 年会员 · 兑换 CDK 已发货 / Your Duolingo redemption code' },
+  { id: 'delivery-duolingo-link', kind: 'link', product: 'duolingo', subject: '多邻国 1 年会员 · 领取链接已发货 / Your Duolingo claim link' },
 ] as const) {
   const html = await render(createElement(MembershipDeliveryEmail, { kind, product }))
   templates[id] = { subject, html, text: toPlainText(html) }

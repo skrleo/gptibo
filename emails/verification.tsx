@@ -4,36 +4,52 @@ import { Body, Button, Column, Container, Head, Heading, Hr, Html, Img, Link, Pr
 
 export const verificationCopy = {
   'admin-login': {
-    subject: '__RECHARGE_BRAND_NAME__ · 管理后台登录验证码',
+    subject: '__RECHARGE_BRAND_NAME__ · 管理后台登录验证码 / Admin sign-in code',
     label: '管理后台',
     title: '验证管理员登录',
     description: '请在管理后台输入下方邮箱验证码，并填写管理员用户名和验证器中的 2FA 验证码。三项验证通过后才能登录。',
+    en: {
+      title: 'Admin sign-in verification',
+      description: 'Enter this email code in the admin console together with your admin username and your authenticator 2FA code. All three checks must pass to sign in.',
+    },
     link: emailBrand.admin,
-    linkLabel: '返回管理后台',
+    linkLabel: '返回管理后台 / Back to admin',
   },
   'partner-welcome': {
-    subject: '__RECHARGE_BRAND_NAME__ · 欢迎加入，你的代理工作台已准备好',
+    subject: '__RECHARGE_BRAND_NAME__ · 欢迎加入，你的代理工作台已准备好 / Welcome — your partner workspace is ready',
     label: '代理工作台',
     title: '你的代理账号已开通',
     description: '欢迎加入 __RECHARGE_BRAND_NAME__。你的专属推广链接已生成，工作台也已准备就绪。登录后，即可设置商品售价、分享推广链接，管理订单与收益。',
+    en: {
+      title: 'Your partner account is ready',
+      description: 'Welcome to __RECHARGE_BRAND_NAME__. Your referral link is live and your workspace is set up. Sign in to set your prices, share your link, and manage orders and earnings.',
+    },
     link: emailBrand.workspace,
-    linkLabel: '登录代理工作台',
+    linkLabel: '登录代理工作台 / Open workspace',
   },
   'partner-login': {
-    subject: '__RECHARGE_BRAND_NAME__ · 代理登录验证码',
+    subject: '__RECHARGE_BRAND_NAME__ · 代理登录验证码 / Partner sign-in code',
     label: '代理工作台',
     title: '登录你的工作台',
     description: '请在登录页面输入下方验证码，继续管理商品、订单与收益。',
+    en: {
+      title: 'Sign in to your workspace',
+      description: 'Enter this code on the sign-in page to continue managing plans, orders, and earnings.',
+    },
     link: emailBrand.workspace,
-    linkLabel: '返回代理工作台',
+    linkLabel: '返回代理工作台 / Back to workspace',
   },
   'order-recovery': {
-    subject: '__RECHARGE_BRAND_NAME__ · 订单找回验证码',
+    subject: '__RECHARGE_BRAND_NAME__ · 订单找回验证码 / Order recovery code',
     label: '订单服务',
     title: '找回你的订单',
     description: '请在订单找回页面输入下方验证码，查看此邮箱关联的订单与服务进度。',
+    en: {
+      title: 'Recover your orders',
+      description: 'Enter this code on the order recovery page to see the orders and service progress linked to this email address.',
+    },
     link: emailBrand.orders,
-    linkLabel: '返回我的订单',
+    linkLabel: '返回我的订单 / My orders',
   },
 } as const
 
@@ -76,23 +92,25 @@ export default function VerificationEmail({ kind = 'partner-login', code = '4826
         </Section>
         <Section className="email-card" style={{ backgroundColor: '#ffffff', border: '1px solid #e5e5ea', borderRadius: '20px' }}>
           <Section className="email-content" style={{ padding: '36px 36px 32px' }}>
-            <Text className="email-muted" style={{ margin: '0 0 12px', fontSize: '11px', color: '#6e6e73', letterSpacing: '2px' }}>{invitation ? '欢迎成为合作伙伴' : '身份验证'}</Text>
-            <Heading className="email-title email-ink" as="h1" style={{ margin: '0 0 16px', fontSize: '30px', lineHeight: '1.3', fontWeight: 650, letterSpacing: '-0.8px', color: '#1d1d1f' }}>{copy.title}</Heading>
-            <Text className="email-muted" style={{ wordBreak: 'break-word', margin: '0 0 28px', fontSize: '14px', lineHeight: '24px', color: '#6e6e73' }}>{copy.description}</Text>
+            <Text className="email-muted" style={{ margin: '0 0 12px', fontSize: '11px', color: '#6e6e73', letterSpacing: '2px' }}>{invitation ? '欢迎成为合作伙伴 / Partner onboarding' : '身份验证 / Verification'}</Text>
+            <Heading className="email-title email-ink" as="h1" style={{ margin: '0 0 4px', fontSize: '30px', lineHeight: '1.3', fontWeight: 650, letterSpacing: '-0.8px', color: '#1d1d1f' }}>{copy.title}</Heading>
+            <Text className="email-muted" style={{ margin: '0 0 16px', fontSize: '15px', lineHeight: '22px', fontWeight: 500, color: '#6e6e73' }}>{copy.en.title}</Text>
+            <Text className="email-muted" style={{ wordBreak: 'break-word', margin: '0 0 10px', fontSize: '14px', lineHeight: '24px', color: '#6e6e73' }}>{copy.description}</Text>
+            <Text className="email-muted" style={{ wordBreak: 'break-word', margin: '0 0 28px', fontSize: '13px', lineHeight: '22px', color: '#86868b' }}>{copy.en.description}</Text>
             {invitation ? <>
-              <Button className="email-button" href={copy.link} style={{ backgroundColor: '#0071e3', color: '#ffffff', borderRadius: '10px', padding: '15px 24px', fontSize: '15px', fontWeight: 600, lineHeight: '20px', textDecoration: 'none', textAlign: 'center', boxSizing: 'border-box' }}>进入代理工作台 →</Button>
+              <Button className="email-button" href={copy.link} style={{ backgroundColor: '#0071e3', color: '#ffffff', borderRadius: '10px', padding: '15px 24px', fontSize: '15px', fontWeight: 600, lineHeight: '20px', textDecoration: 'none', textAlign: 'center', boxSizing: 'border-box' }}>进入代理工作台 / Open workspace →</Button>
               <Section className="email-code-panel" style={{ backgroundColor: '#f5f5f7', borderRadius: '12px', padding: '22px 24px', marginTop: '28px' }}>
-                <Text className="email-ink" style={{ margin: '0 0 14px', fontSize: '14px', fontWeight: 600, color: '#1d1d1f' }}>三步开始使用</Text>
-                {['打开代理工作台，填写接收本邮件的邮箱。', '点击「获取验证码」，查收登录验证码邮件。', '输入验证码完成登录，查看专属推广链接。'].map((step, index) => <Row key={step} style={{ marginTop: index ? '12px' : 0 }}><Column valign="top" style={{ width: '26px' }}><Text style={{ margin: 0, fontSize: '13px', lineHeight: '22px', color: '#0071e3', fontWeight: 600 }}>0{index + 1}</Text></Column><Column><Text className="email-muted" style={{ margin: 0, fontSize: '13px', lineHeight: '22px', color: '#6e6e73' }}>{step}</Text></Column></Row>)}
+                <Text className="email-ink" style={{ margin: '0 0 14px', fontSize: '14px', fontWeight: 600, color: '#1d1d1f' }}>三步开始使用 / Three steps to start</Text>
+                {['打开代理工作台，填写接收本邮件的邮箱。 / Open the workspace and enter this email address.', '点击「获取验证码」，查收登录验证码邮件。 / Click “Get code” and check your inbox for the sign-in code.', '输入验证码完成登录，查看专属推广链接。 / Enter the code to sign in and see your referral link.'].map((step, index) => <Row key={step} style={{ marginTop: index ? '12px' : 0 }}><Column valign="top" style={{ width: '26px' }}><Text style={{ margin: 0, fontSize: '13px', lineHeight: '22px', color: '#0071e3', fontWeight: 600 }}>0{index + 1}</Text></Column><Column><Text className="email-muted" style={{ margin: 0, fontSize: '13px', lineHeight: '22px', color: '#6e6e73' }}>{step}</Text></Column></Row>)}
               </Section>
-              <Text className="email-muted" style={{ margin: '20px 0 0', fontSize: '12px', lineHeight: '21px', color: '#6e6e73' }}>无需设置密码。准备登录时再获取验证码即可，登录入口可收藏以便下次使用。</Text>
+              <Text className="email-muted" style={{ margin: '20px 0 0', fontSize: '12px', lineHeight: '21px', color: '#6e6e73' }}>无需设置密码。准备登录时再获取验证码即可，登录入口可收藏以便下次使用。<br />No password needed — request a code whenever you want to sign in, and bookmark the sign-in page for next time.</Text>
             </> : <><Section className="email-code-panel" style={{ backgroundColor: '#f5f5f7', borderRadius: '12px', padding: '23px 8px 20px', textAlign: 'center' }}>
               <Text className="email-code email-ink" style={{ margin: '0 0 10px', fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", monospace', fontSize: '40px', fontWeight: 600, lineHeight: '48px', letterSpacing: '8px', color: '#1d1d1f' }}>{code}</Text>
-              <Text className="email-muted" style={{ margin: 0, fontSize: '12px', color: '#6e6e73' }}>验证码 · 10 分钟内有效</Text>
+              <Text className="email-muted" style={{ margin: 0, fontSize: '12px', color: '#6e6e73' }}>验证码 · 10 分钟内有效 / Code · valid for 10 minutes</Text>
             </Section>
-            <Text className="email-muted" style={{ margin: '22px 0 0', fontSize: '12px', lineHeight: '21px', color: '#6e6e73' }}>请勿向任何人提供验证码，包括声称是客服的人。如果不是你本人操作，忽略此邮件即可。</Text></>}
+            <Text className="email-muted" style={{ margin: '22px 0 0', fontSize: '12px', lineHeight: '21px', color: '#6e6e73' }}>请勿向任何人提供验证码，包括声称是客服的人。如果不是你本人操作，忽略此邮件即可。<br />Never share this code with anyone, including anyone claiming to be support. If this wasn’t you, just ignore this email.</Text></>}
             <Hr className="email-divider" style={{ border: 'none', borderTop: '1px solid #e5e5ea', margin: '26px 0 22px' }} />
-            {invitation ? <><Text className="email-muted" style={{ margin: '0 0 4px', fontSize: '12px', lineHeight: '21px', color: '#6e6e73' }}>按钮无法打开？复制下方链接到浏览器：</Text><Link className="email-link" href={copy.link} style={{ color: '#0071e3', fontSize: '13px', textDecoration: 'none', lineHeight: '24px', wordBreak: 'break-all' }}>{copy.link}</Link></> : <Link className="email-link" href={copy.link} style={{ color: '#0071e3', fontSize: '13px', fontWeight: 500, textDecoration: 'none', display: 'inline-block', lineHeight: '28px' }}>{copy.linkLabel} →</Link>}
+            {invitation ? <><Text className="email-muted" style={{ margin: '0 0 4px', fontSize: '12px', lineHeight: '21px', color: '#6e6e73' }}>按钮无法打开？复制下方链接到浏览器 / Button not opening? Copy this link into your browser:</Text><Link className="email-link" href={copy.link} style={{ color: '#0071e3', fontSize: '13px', textDecoration: 'none', lineHeight: '24px', wordBreak: 'break-all' }}>{copy.link}</Link></> : <Link className="email-link" href={copy.link} style={{ color: '#0071e3', fontSize: '13px', fontWeight: 500, textDecoration: 'none', display: 'inline-block', lineHeight: '28px' }}>{copy.linkLabel} →</Link>}
           </Section>
         </Section>
         <Section style={{ padding: '22px 8px 0' }}>

@@ -20,6 +20,8 @@ test('verification mail preserves leading zeroes, purpose and fallback without e
     assert.ok(mail.text.includes(kind === 'order-recovery' ? '订单' : kind === 'admin-login' ? '管理后台' : '代理工作台'))
     if (kind === 'partner-login') assert.match(mail.text, /https:\/\/shop.example.invalid\/join/)
     assert.match(mail.text, /10 分钟/)
+    assert.match(mail.subject, /\//, 'Subject carries the English counterpart')
+    assert.match(mail.text, /valid for 10 minutes/)
   }
   assert.throws(() => verificationMessage('partner-login', '<img>'))
   assert.throws(() => verificationMessage('partner-login', '12345'))
@@ -30,7 +32,8 @@ test('partner invitation contains a durable login link and instructions without 
   assert.match(mail.text, /账号已开通/)
   assert.match(mail.text, /https:\/\/shop.example.invalid\/join/)
   assert.match(mail.text, /获取验证码/)
-  assert.match(mail.html, /进入代理工作台/)
+  assert.match(mail.text, /partner account is ready/)
+  assert.match(mail.html, /进入代理工作台 \/ Open workspace/)
   assert.doesNotMatch(mail.html + mail.text, /__RECHARGE_VERIFICATION_CODE__|10 分钟|身份验证/)
   assert.doesNotMatch(mail.text, /\b\d{6}\b/)
   assert.match(mail.html, /prefers-color-scheme: dark/)
