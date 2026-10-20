@@ -1,5 +1,6 @@
 export const STOREFRONT_PRODUCTS = [
   { id: 'chatgpt', name: 'ChatGPT' },
+  { id: 'muse-ai', name: 'Muse AI' },
   { id: 'gemini', name: 'Gemini Pro' },
   { id: 'duolingo', name: '多邻国' },
   { id: 'x-premium', name: 'X Premium' },

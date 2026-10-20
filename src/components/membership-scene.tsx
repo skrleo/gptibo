@@ -1,6 +1,7 @@
 import { useStorefrontI18n } from '@/lib/storefront-i18n'
 import { useEffect, useId, useRef, useState } from 'react'
 import { DuoAnimation } from './duo-animation'
+import { formatCatalogPrice } from '@/lib/catalog-display'
 import '@/styles/membership-products.css'
 
 export function DuoMark() {
@@ -9,6 +10,18 @@ export function DuoMark() {
 export function GeminiMark() {
   const id = useId().replaceAll(':', '')
   return <svg viewBox="0 0 160 160" aria-hidden="true" className="gemini-art"><defs><linearGradient id={id} x1="0" y1="1" x2="1" y2="0"><stop stopColor="#4888ee" /><stop offset=".5" stopColor="#7e78ee" /><stop offset="1" stopColor="#dd85aa" /></linearGradient></defs><path fill={`url(#${id})`} d="M80 5C91 48 112 69 155 80C112 91 91 112 80 155C69 112 48 91 5 80C48 69 69 48 80 5Z" /></svg>
+}
+export function MuseScene({ price }: { price: number | null }) {
+  const { t } = useStorefrontI18n()
+  const ref = useRef<HTMLDivElement>(null)
+  const [visible, setVisible] = useState(true)
+  useEffect(() => { const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: .1 }); if (ref.current) observer.observe(ref.current); return () => observer.disconnect() }, [])
+  return <div ref={ref} className="membership-scene scene-muse" data-paused={!visible}>
+    <div className="membership-visual" aria-hidden="true">
+      <span className="muse-spark spark-one">✦</span><span className="muse-spark spark-two">✦</span>
+      <div className="muse-card"><div className="muse-card-face"><span className="muse-card-brand"><img src="/brands/muse-logo.svg" alt="" />Muse</span><strong className="muse-card-name">{t('单个')}</strong><span className="muse-card-price">{price === null ? <small>{t('价格待加载')}</small> : <>¥{formatCatalogPrice(price)}<small>{t(' / 个')}</small></>}</span><span className="muse-card-sheen" /></div></div>
+    </div>
+  </div>
 }
 export function MembershipScene({ productId }: { productId: 'gemini' | 'duolingo' }) {
   const { t } = useStorefrontI18n()

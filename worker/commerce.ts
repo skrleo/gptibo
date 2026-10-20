@@ -22,7 +22,8 @@ import { supplierSnapshot, snapshotStatement, syncRechargeOrder, rechargeAction,
 import type { SupportContactsSettings } from '../shared/support-contacts.ts'
 import { setRedemptionBlocked } from './order-redemption.ts'
 import { adminVisitorSummary } from './visitors.ts'
-import { isLegacyManualOrder } from './manual-fulfillment.ts'
+import { isManualFulfillmentOrder } from './manual-fulfillment.ts'
+import { isManualFulfillmentPlan } from '../shared/manual-products.ts'
 import { accountingRoutes } from './accounting.ts'
 import { customerRoutes } from './customers.ts'
 import { invoiceRoutes } from './invoices.ts'
@@ -31,6 +32,7 @@ import { rechargeReminderPreview } from './recharge-reminders.ts'
 import { adminGmailOrder, confirmGmailNotPurchased, fulfillGmail, gmailCheckoutEnabled, gmailProductsRoute, gmailSnapshot, gmailSnapshotStatement } from './account_supplier/service.ts'
 import { securitySummary } from './security-audit.ts'
 import { alertThreshold, plansImport, stockSnapshot } from './plans.ts'
+import { catalogOrderRoute, catalogOrderSettings, sortCatalogRows } from './catalog-order.ts'
 
 type Plan = { delivery_instructions: string; partner_enabled: number; id: string; product_id: string; name: string; price_cents: number; enabled: number; renewal_only: number; version: number }
 type OrderPartnerSource = { id: string; slug: string; name: string; email: string; wechat: string; qq: string }
@@ -38,7 +40,11 @@ const statuses: Status[] = ['pending', 'session', 'processing', 'success', 'fail
 const publicOrder = (o: Order) => ({ purchaseNote: o.purchase_note ?? '', isTest: Boolean(o.is_test), customerEmail: o.customer_email, refundedCents: o.refunded_cents, refundHold: Boolean(o.refund_hold), redemptionBlocked: Boolean(o.redemption_blocked), id: o.id, plan: o.plan, planName: o.plan_name, partnerName: o.partner_name ?? undefined, price: o.price_cents / 100, mode: o.mode, paymentStatus: o.payment_status, status: o.status, createdAt: o.created_at, updatedAt: o.updated_at, startedAt: o.started_at ?? undefined, smsPhone: o.sms_phone ?? undefined, version: o.version })
 type AdminOrder = Order & { settlement_status: 'pending' | 'paid' | null }
 const adminOrder = async (env: Env, o: AdminOrder) => ({ ...(await customerOrder(env, o)), platformStatus: await platformOrderStatus(env, o), settlementStatus: o.settlement_status })
-const plans = async (env: Env) => (await env.INTEREST_DB.prepare('SELECT * FROM catalog_plans ORDER BY rowid').all<Plan>()).results
+async function platformCatalog(env: Env) {
+  const rows = (await env.INTEREST_DB.prepare('SELECT * FROM catalog_plans ORDER BY rowid').all<Plan>()).results
+  const order = await catalogOrderSettings(env, rows.map(row => row.id))
+  return { plans: sortCatalogRows(rows, order.planIds), productOrder: order.productIds }
+}
 const customerOrder = async (env: Env, o: Order, contacts = new Map<string, Promise<SupportContactsSettings>>(), syncError = false) => {
   o = await expireRechargeOrder(env, o)
   const owner = o.partner_id ?? 'platform'
@@ -46,7 +52,7 @@ const customerOrder = async (env: Env, o: Order, contacts = new Map<string, Prom
   contacts.set(owner, settings)
   const [support, fulfillment] = await Promise.all([settings, rechargeSummary(env, o)])
   if (fulfillment) Object.assign(fulfillment, { syncError })
-  return { ...publicOrder(o), xgift: await xgiftSummary(env, o), manualFulfillment: isLegacyManualOrder(o, Boolean(fulfillment)) || Boolean(emailProduct(o.plan)), delivery: await emailDeliverySummary(env, o), supportContacts: support.contacts, refundHold: !!o.refund_hold || !!fulfillment?.financialHold, fulfillment }
+  return { ...publicOrder(o), xgift: await xgiftSummary(env, o), manualFulfillment: isManualFulfillmentOrder(o, Boolean(fulfillment)) || Boolean(emailProduct(o.plan)), delivery: await emailDeliverySummary(env, o), supportContacts: support.contacts, refundHold: !!o.refund_hold || !!fulfillment?.financialHold, fulfillment }
 }
 async function orderPartnerSource(env: Env, order: Order): Promise<OrderPartnerSource | null> {
   if (!order.partner_id) return null
@@ -98,17 +104,19 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       const live = supplierCheckoutEnabled(env)
       const testing = env.ORDER_TESTING_ENABLED === 'true'
       const email = emailCheckoutEnabled(env), gmail = gmailCheckoutEnabled(env), delivery_supplier = delivery_supplierCheckoutEnabled(env)
+      const paymentMethods = await enabledPaymentMethods(env)
+      const manual = testing || (env.PAYMENT_CHECKOUT_ENABLED === 'true' && paymentMethods.length > 0)
       const mapped = live ? productMap(env) : {}
       const [catalog, support, announcement] = await Promise.all([
-        partner ? partnerCatalog(env, partner) : plans(env).then(plans => ({ plans })),
+        partner ? partnerCatalog(env, partner) : platformCatalog(env),
         supportContactsSettings(env, partner?.id),
         partner ? publicAnnouncement(env, partner.id) : null,
       ])
       // Storefront prices are configured retail prices, independent of supplier latency.
       const offers = (catalog.plans as Plan[]).map(plan => ({ ...plan, enabled: plan.enabled && (
-        isXGiftPlan(plan.id) ? xgiftCheckoutEnabled(env) : plan.id === 'gmail-account' ? (gmail || email) : isDeliverySupplierPlan(plan.id) ? (delivery_supplier || (emailProduct(plan.id) ? email : false)) : emailProduct(plan.id) ? email : testing || (live && Boolean(mapped[plan.id]))
+        isManualFulfillmentPlan(plan.id) ? manual : isXGiftPlan(plan.id) ? xgiftCheckoutEnabled(env) : plan.id === 'gmail-account' ? (gmail || email) : isDeliverySupplierPlan(plan.id) ? (delivery_supplier || (emailProduct(plan.id) ? email : false)) : emailProduct(plan.id) ? email : testing || (live && Boolean(mapped[plan.id]))
       ) ? 1 : 0 }))
-      return json({ ...catalog, supportContacts: support.contacts, announcement, plans: offers, mode: live ? 'live' : 'demo', checkoutEnabled: testing || live || email || xgiftCheckoutEnabled(env), testingEnabled: testing, paymentMethods: await enabledPaymentMethods(env) }, 200, { 'Server-Timing': `catalog;dur=${(performance.now() - started).toFixed(1)}` })
+      return json({ ...catalog, supportContacts: support.contacts, announcement, plans: offers, mode: live ? 'live' : 'demo', checkoutEnabled: testing || live || email || xgiftCheckoutEnabled(env), testingEnabled: testing, paymentMethods }, 200, { 'Server-Timing': `catalog;dur=${(performance.now() - started).toFixed(1)}` })
     }
     if (path === '/api/orders/client' && method === 'POST') {
       await body(request)
@@ -155,7 +163,9 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
         return json({ order: await customerOrder(env, existing) })
       }
       const emailDelivery = Boolean(emailProduct(data.plan))
-      const live = isXGiftPlan(data.plan) ? xgiftCheckoutEnabled(env) : data.plan === 'gmail-account' ? (gmailCheckoutEnabled(env) || emailCheckoutEnabled(env)) : isDeliverySupplierPlan(data.plan) ? (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env)) : emailDelivery ? emailCheckoutEnabled(env) : supplierCheckoutEnabled(env)
+      const manualDelivery = isManualFulfillmentPlan(data.plan)
+      const manualCheckout = manualDelivery && env.PAYMENT_CHECKOUT_ENABLED === 'true' && (await enabledPaymentMethods(env)).length > 0
+      const live = manualDelivery ? manualCheckout : isXGiftPlan(data.plan) ? xgiftCheckoutEnabled(env) : data.plan === 'gmail-account' ? (gmailCheckoutEnabled(env) || emailCheckoutEnabled(env)) : isDeliverySupplierPlan(data.plan) ? (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env)) : emailDelivery ? emailCheckoutEnabled(env) : supplierCheckoutEnabled(env)
       if (emailDelivery && !live) throw new ApiError('邮件交付商品暂未开放购买。', 409)
       if (env.ORDER_TESTING_ENABLED !== 'true' && !live) throw new ApiError('该服务暂未开放购买，请稍后再来。', 409)
       const plan = await env.INTEREST_DB.prepare('SELECT * FROM catalog_plans WHERE id=? AND enabled=1').bind(data.plan).first<Plan>()
@@ -166,7 +176,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       if (partner && !offer) throw new ApiError('该代理尚未开通此套餐。', 409)
       if (data.expectedPrice !== (offer?.price_cents ?? plan.price_cents)) throw new ApiError('套餐价格已更新，请刷新后重新确认。', 409)
       const price = offer?.price_cents ?? plan.price_cents
-      const snapshot = live && !emailDelivery && !isXGiftPlan(plan.id) ? await supplierSnapshot(env, plan.id, price, offer?.cost_cents) : null
+      const snapshot = live && !manualDelivery && !emailDelivery && !isXGiftPlan(plan.id) ? await supplierSnapshot(env, plan.id, price, offer?.cost_cents) : null
       // Only supplier-sourced orders take the procurement path; without the
       // supplier integration these products fall back to email delivery.
       const delivery_supplier = isDeliverySupplierPlan(plan.id) && delivery_supplierCheckoutEnabled(env) ? await delivery_supplierSnapshot(env, plan.id, price, offer?.cost_cents, plan.delivery_instructions) : null
@@ -317,7 +327,7 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
       }
       let patch: Partial<Order> | undefined
       if (data.action === 'note') patch = {}
-      if (o.payment_status === 'paid' && isLegacyManualOrder(o, Boolean(await findRechargeOrder(env, o.id)))) {
+      if (o.payment_status === 'paid' && isManualFulfillmentOrder(o, Boolean(await findRechargeOrder(env, o.id)))) {
         if (data.action === 'manual-start' && o.status === 'session') patch = { status: 'processing', started_at: Date.now() }
         if (data.action === 'manual-complete' && ['session', 'processing'].includes(o.status)) patch = { status: 'success' }
       }
@@ -330,7 +340,12 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
       return json({ order: await customerOrder(env, next) })
     }
   }
-  if (path === '/api/admin/plans' && method === 'GET') return json({ plans: await plans(env) })
+  if (path === '/api/admin/plans' && method === 'GET') {
+    const rows = (await env.INTEREST_DB.prepare('SELECT * FROM catalog_plans ORDER BY rowid').all<Plan>()).results
+    const order = await catalogOrderSettings(env, rows.map(row => row.id))
+    return json({ plans: sortCatalogRows(rows, order.planIds), order })
+  }
+  if (path === '/api/admin/catalog-order') return await catalogOrderRoute(request, env)
   if (path === '/api/admin/plans/import' && method === 'POST') return await plansImport(request, env)
   if (path === '/api/admin/stock' && method === 'GET') return json({ groups: await stockSnapshot(env), threshold: alertThreshold(env) })
   const planMatch = path.match(/^\/api\/admin\/plans\/([a-z0-9-]+)$/)
@@ -358,7 +373,7 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
     return json({ rows, total: count?.total ?? 0, page, deliveryEnabled: false })
   }
   if (path === '/api/admin/audit' && method === 'GET') {
-    const rows = (await db.prepare("SELECT * FROM admin_audit WHERE action='plan-update' ORDER BY created_at DESC LIMIT 100").all()).results
+    const rows = (await db.prepare("SELECT * FROM admin_audit WHERE action IN ('plan-update','catalog-order') ORDER BY created_at DESC LIMIT 100").all()).results
     return json({ rows })
   }
   if (path === '/api/admin/security' && method === 'GET') return json(await securitySummary(env))

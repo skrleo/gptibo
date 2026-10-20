@@ -703,7 +703,7 @@ test('configured catalog is independent of supplier prices; orders still enforce
   const s = setup(t)
   const catalog = (await (await s.call('/api/catalog')).json())
   assert.equal(catalog.checkoutEnabled, true); assert.equal(catalog.testingEnabled, false)
-  assert.deepEqual(catalog.plans.map((p: { enabled: number }) => p.enabled), [1,0,0,0,0,0,0,0,0,0])
+  assert.deepEqual(catalog.plans.map((p: { enabled: number }) => p.enabled), [1,0,0,0,0,0,0,0,0,0,0])
   s.products[0].supply_price = '140.00'
   assert.equal((await (await s.call('/api/catalog')).json()).plans[0].enabled, 1)
   const buyer = await s.buyer()

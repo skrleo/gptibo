@@ -5,7 +5,7 @@ import { ApiError, body, json, type Env, type Value } from './platform.ts'
 export async function defaultSupplySettings(env: Env): Promise<DefaultSupplySettings> {
   const settings = await env.INTEREST_DB.prepare('SELECT version FROM partner_default_price_settings WHERE id=1').first<{ version: number }>()
   if (!settings) throw new ApiError('默认拿货价设置暂不可用，请稍后重试。', 503)
-  const plans = (await env.INTEREST_DB.prepare('SELECT c.id,c.product_id,c.name,c.price_cents,c.renewal_only,c.version catalog_version,COALESCE(d.cost_cents,c.price_cents) cost_cents FROM catalog_plans c LEFT JOIN partner_default_prices d ON d.plan=c.id ORDER BY c.rowid').all<DefaultSupplyPlan>()).results
+  const plans = (await env.INTEREST_DB.prepare("SELECT c.id,c.product_id,c.name,c.price_cents,c.renewal_only,c.version catalog_version,COALESCE(d.cost_cents,c.price_cents) cost_cents FROM catalog_plans c LEFT JOIN partner_default_prices d ON d.plan=c.id WHERE c.id<>'muse-ai-once' ORDER BY c.rowid").all<DefaultSupplyPlan>()).results
   return { version: settings.version, plans }
 }
 
@@ -36,7 +36,7 @@ export async function defaultSupplyRoute(request: Request, env: Env) {
   const guards: Value[] = prices.flatMap(row => [row.plan.id, row.plan.catalog_version, row.cost])
   const note = env.ADMIN_USERNAME + '：修改默认拿货价；' + prices.map(row => `${productNameForId(row.plan.product_id) + ' ' + row.plan.name} ¥${(row.plan.cost_cents / 100).toFixed(2)} → ¥${(row.cost / 100).toFixed(2)}`).join('；')
   await db.batch([
-    db.prepare(`UPDATE partner_default_price_settings SET version=version+1,change_id=?,updated_at=? WHERE id=1 AND version=? AND (SELECT COUNT(*) FROM catalog_plans)=?${checks ? ' AND ' + checks : ''}`).bind(id, now, current.version, current.plans.length, ...guards),
+    db.prepare(`UPDATE partner_default_price_settings SET version=version+1,change_id=?,updated_at=? WHERE id=1 AND version=? AND (SELECT COUNT(*) FROM catalog_plans WHERE id<>'muse-ai-once')=?${checks ? ' AND ' + checks : ''}`).bind(id, now, current.version, current.plans.length, ...guards),
     ...prices.map(row => db.prepare('INSERT INTO partner_default_prices(plan,cost_cents) SELECT ?,? WHERE EXISTS(SELECT 1 FROM partner_default_price_settings WHERE id=1 AND change_id=?) ON CONFLICT(plan) DO UPDATE SET cost_cents=excluded.cost_cents').bind(row.plan.id, row.cost, id)),
     db.prepare("INSERT INTO admin_audit(id,target_id,action,note,created_at) SELECT ?,'partner-default-prices','partner-default-prices',?,? FROM partner_default_price_settings WHERE id=1 AND change_id=?").bind(id, note, now, id),
   ])

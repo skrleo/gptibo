@@ -19,7 +19,7 @@ test('saved product order survives reads, reaches only its shop and can be resto
   const slug = s.db.prepare('SELECT slug FROM partners WHERE id=?').get(a.id)!.slug
   const catalog = await (await s.request('/api/catalog?partner=' + slug)).json()
   assert.deepEqual(catalog.productOrder, reordered)
-  assert.equal((await (await s.request('/api/catalog')).json()).productOrder, undefined)
+  assert.deepEqual((await (await s.request('/api/catalog')).json()).productOrder, DEFAULT_PRODUCT_ORDER)
   assert.equal(s.db.prepare("SELECT COUNT(*) n FROM admin_audit WHERE target_id=? AND action='partner-product-order'").get(a.id)!.n, 1)
   assert.equal((await s.request(endpoint, { productIds: DEFAULT_PRODUCT_ORDER, version: 1 }, a.cookie)).status, 200)
   assert.deepEqual(await read(a.cookie), { productIds: DEFAULT_PRODUCT_ORDER, version: 2, hiddenProductIds: [] })

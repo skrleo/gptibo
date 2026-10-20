@@ -17,6 +17,7 @@ import { productOrderRoute, productOrderSettings } from './product-order.ts'
 import { partnerOrderSummary } from './partner-order-summary.ts'
 import { domainBind, domainCheckRoute, domainRemove, domainView } from './custom-domain.ts'
 import { notificationSettingsRoute, payoutAccount, payoutAccountRoute } from './partner-settings.ts'
+import { catalogOrderSettings, sortCatalogRows } from './catalog-order.ts'
 import { partnerTicketRoutes } from './tickets.ts'
 
 export async function resolvePartner(env: Env, slug: unknown) {
@@ -27,9 +28,9 @@ export async function resolvePartner(env: Env, slug: unknown) {
   return p
 }
 export async function partnerCatalog(env: Env, p: Partner) {
-  const rows = (await env.INTEREST_DB.prepare('SELECT c.id,c.product_id,c.name,c.purchase_note,pp.price_cents,CASE WHEN c.partner_enabled=1 THEN c.enabled ELSE 0 END enabled,c.renewal_only,pp.version FROM catalog_plans c JOIN partner_prices pp ON pp.plan=c.id WHERE pp.partner_id=? ORDER BY c.rowid').bind(p.id).all<{ product_id: string }>()).results
-  const { productIds, hiddenProductIds = [] } = await productOrderSettings(env, p.id)
-  return { plans: rows.filter(row => !hiddenProductIds.some(id => id === row.product_id)), productOrder: productIds, hiddenProductIds, partner: { name: p.name, slug: p.slug }, mode: 'demo' }
+  const rows = (await env.INTEREST_DB.prepare('SELECT c.id,c.product_id,c.name,c.purchase_note,pp.price_cents,CASE WHEN c.partner_enabled=1 THEN c.enabled ELSE 0 END enabled,c.renewal_only,pp.version FROM catalog_plans c JOIN partner_prices pp ON pp.plan=c.id WHERE pp.partner_id=? ORDER BY c.rowid').bind(p.id).all<{ id: string; product_id: string }>()).results
+  const [{ productIds, hiddenProductIds = [] }, catalogOrder] = await Promise.all([productOrderSettings(env, p.id), catalogOrderSettings(env, rows.map(row => String(row.id)))])
+  return { plans: sortCatalogRows(rows, catalogOrder.planIds).filter(row => !hiddenProductIds.some(id => id === row.product_id)), productOrder: productIds, hiddenProductIds, partner: { name: p.name, slug: p.slug }, mode: 'demo' }
 }
 const eligible = eligibleSql()
 const profit = profitSql()
@@ -40,7 +41,7 @@ const debitSql = 'COALESCE((SELECT SUM(d.amount_cents) FROM partner_debits d WHE
 const paidRefundHoldSql = (partnerId: string) => `EXISTS(SELECT 1 FROM orders h JOIN partner_payouts hp ON hp.id=h.payout_id LEFT JOIN recharge_orders t ON t.order_id=h.id WHERE h.partner_id=${partnerId} AND hp.status='paid' AND (h.refund_hold=1 OR (h.payment_status='paid' AND t.financial_hold=1)))`
 const paidRefundHold = paidRefundHoldSql('orders.partner_id')
 const priceText = (value: number) => '¥' + (value / 100).toFixed(2)
-const planText = (id: string) => ({ plus: 'ChatGPT Plus', 'pro-5x': 'ChatGPT Pro 5×', 'pro-20x': 'ChatGPT Pro 10×', 'pro-25x': 'ChatGPT Pro 25×', 'codex-sms-once': 'Codex 接码' })[id] ?? id
+const planText = (id: string) => ({ plus: 'ChatGPT Plus', 'pro-5x': 'ChatGPT Pro 5×', 'pro-20x': 'ChatGPT Pro 10×', 'pro-25x': 'ChatGPT Pro 25×', 'codex-sms-once': 'Codex 接码', 'muse-ai-once': 'Muse AI 单个' })[id] ?? id
 function page(url: URL) { const n = Number(url.searchParams.get('page') ?? 1); if (!Number.isInteger(n) || n < 1 || n > 10000) throw new ApiError('页码无效。'); return n }
 function cents(v: unknown) { if (!Number.isSafeInteger(v) || Number(v) < 1 || Number(v) > 10000000) throw new ApiError('价格需为 0.01–100000 元，最多两位小数。'); return Number(v) }
 function text(v: unknown, max: number, label: string) { if (typeof v !== 'string' || !v.trim() || v.trim().length > max) throw new ApiError(`请填写有效的${label}。`); return v.trim() }

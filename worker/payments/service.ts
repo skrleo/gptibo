@@ -3,6 +3,7 @@ import { fulfillXGift, xgiftCheckoutEnabled } from '../xgift/service.ts'
 import { isDeliverySupplierPlan } from '../delivery_supplier/client.ts'
 import { fulfillDeliverySupplier, delivery_supplierCheckoutEnabled } from '../delivery_supplier/service.ts'
 import { emailProduct } from '../../shared/email-products.ts'
+import { manualProduct } from '../../shared/manual-products.ts'
 import { emailCheckoutEnabled } from '../email-delivery.ts'
 import { fulfillGmail, gmailCheckoutEnabled } from '../account_supplier/service.ts'
 import { ApiError, body, json, type Env } from '../platform.ts'
@@ -13,7 +14,11 @@ import type { PaymentOrder, PaymentResult, PaymentProvider } from './types.ts'
 
 export type Payment = { order_id: string; provider: string; account: string; amount_cents: number; state: 'pending' | 'paid' | 'closed'; trade_no: string | null; qr: string | null; expires_at: number; lease_token: string | null; lease_until: number; notified_at: number | null; created_at: number; updated_at: number; expected_raw: number | null; cny_per_usdt: number | null }
 export const findPayment = (env: Env, id: string) => env.INTEREST_DB.prepare('SELECT * FROM payments WHERE order_id=?').bind(id).first<Payment>()
-const details = (p: Payment, o: Order): PaymentOrder => ({ id: p.order_id, amountCents: p.amount_cents, subject: o.is_test ? 'Gift2Card · 支付联调测试（不交付商品）' : `Gift2Card · ${emailProduct(o.plan)?.name ?? (isXGiftPlan(o.plan) ? o.plan_name : o.plan === 'codex-sms-once' ? 'Codex 接码' : 'ChatGPT ' + o.plan_name)}`, expiresAt: p.expires_at, createdAt: p.created_at, expectedRaw: p.expected_raw ?? undefined })
+function paymentSubject(o: Order) {
+  const manual = manualProduct(o.plan)
+  return manual ? `${manual.name} ${o.plan_name}` : emailProduct(o.plan)?.name ?? (isXGiftPlan(o.plan) ? o.plan_name : o.plan === 'codex-sms-once' ? 'Codex 接码' : 'ChatGPT ' + o.plan_name)
+}
+const details = (p: Payment, o: Order): PaymentOrder => ({ id: p.order_id, amountCents: p.amount_cents, subject: o.is_test ? 'Gift2Card · 支付联调测试（不交付商品）' : `Gift2Card · ${paymentSubject(o)}`, expiresAt: p.expires_at, createdAt: p.created_at, expectedRaw: p.expected_raw ?? undefined })
 function providerFor(env: Env, p: Payment) {
   const provider = paymentProvider(env, p.provider)
   if (provider.account !== p.account) throw new ApiError('支付商户配置已变化，请恢复该订单原渠道配置后处理。', 503)

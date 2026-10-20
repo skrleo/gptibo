@@ -1,6 +1,7 @@
 import { isXGiftPlan } from '../../shared/xgift-products.ts'
 import { emailProduct } from '../../shared/email-products.ts'
 import { confirmedRefundLabel, type PlatformOrderStatus } from '../../shared/platform-order-status.ts'
+import { isManualFulfillmentPlan } from '../../shared/manual-products.ts'
 
 export const PLANS = [
   { id: 'x-premium-3m', productId: 'x-premium', name: 'Premium · 3 个月', price: 35, renewalOnly: false, subtitle: '三个月，探索更多。', description: '轻松开始，体验 Premium', features: ['无需账号密码', '付款前验证账号', '订单进度可查'] },
@@ -14,6 +15,7 @@ export const PLANS = [
   { id: 'gemini-pro-18m', productId: 'gemini', name: '18 个月会员', price: 19.9, renewalOnly: false, subtitle: '让灵感，多一点时间。', description: '18 个月会员 · 领取链接邮件交付', features: ['18 个月会员', '邮件领取链接', '自动发货 · 订单页可领取'] },
   { id: 'duolingo-12m', productId: 'duolingo', name: '1 年会员', price: 19.9, renewalOnly: false, subtitle: '和 Duo 一起，把学习继续。', description: '1 年会员 · 兑换 CDK 邮件交付', features: ['1 年会员', '邮件兑换 CDK', '自动发货 · 订单页可领取'] },
   { id: 'gmail-account', productId: 'gmail', name: '美国长效白号 · 带 2FA', price: 18.8, renewalOnly: false, subtitle: '一个邮箱，让连接开始。', description: '个人 Gmail 白号 · 账号资料自动邮件交付', features: ['美国个人白号 · 带 2FA', '付款后自动邮件发货', '购买当天首次登录质保'] },
+  { id: 'muse-ai-once', productId: 'muse-ai', name: '单个', price: 12, renewalOnly: false, subtitle: '一个 Muse AI，按需购买。', description: '单个商品 · 人工交付', features: ['按个购买', '人工处理', '订单进度可查'] },
 ] as const
 // Retired plans remain readable without silently changing historical purchases.
 export const ORDER_PLANS = [...PLANS, { id: 'pro', productId: 'chatgpt', name: 'Pro', price: 800, renewalOnly: false }] as const
@@ -31,6 +33,8 @@ export function orderLabel(order: DemoOrder & { manualFulfillment?: boolean; ful
   if (order.status === 'cancelled' && order.fulfillment?.paymentExpired) return '已过期'
   if (isXGiftPlan(order.plan)) return ({ pending: '待付款', session: '等待充值', processing: '充值处理中', success: '已完成', failed: '充值未完成', cancelled: '已关闭' })[order.status]
   if (emailProduct(order.plan)) return ({ pending: '待付款', session: '待邮件发货', processing: '发货处理中', success: '已发货', failed: '发货待核对', cancelled: '已关闭' })[order.status]
+  if (isManualFulfillmentPlan(order.plan) && order.status === 'session') return '待人工交付'
+  if (isManualFulfillmentPlan(order.plan) && order.status === 'processing') return '人工交付中'
   if (order.manualFulfillment && order.status === 'session') return '待人工开通'
   if (order.manualFulfillment && order.status === 'processing') return '人工开通中'
   if (order.plan !== 'codex-sms-once') return ORDER_LABELS[order.status]
