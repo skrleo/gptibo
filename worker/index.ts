@@ -14,6 +14,7 @@ import { checkStockAlerts } from './plans.ts'
 import { invoiceNotification, reconcileInvoicePayments } from './invoices.ts'
 import { sendDueRechargeReminders } from './recharge-reminders.ts'
 import { reconcileGmail } from './account_supplier/service.ts'
+import { sendDuePartnerOrderEmails } from './partner-notifications.ts'
 import { requireSecureTransport, secureResponse } from './security.ts'
 import { recordApiResponse, pruneSecurityAudit, sendDueSecurityAlerts } from './security-audit.ts'
 import { customDomainEntry, reconcileDomains } from './custom-domain.ts'
@@ -36,7 +37,7 @@ export default {
       await Promise.all([reconcilePayments(env), reconcileRecharge(env), retryPayoutNotifications(env), reconcileInvoicePayments(env), reconcileDomains(env)])
       await reconcileRechargeRefunds(env)
     }
-    await Promise.all([sendDueRechargeReminders(env), reconcileGmail(env), reconcileDeliverySupplier(env), reconcileXGift(env)])
+    await Promise.all([sendDueRechargeReminders(env), sendDuePartnerOrderEmails(env), reconcileGmail(env), reconcileDeliverySupplier(env), reconcileXGift(env)])
     await pruneSecurityAudit(env).catch(() => { console.error('Security audit pruning temporarily unavailable') })
     await checkStockAlerts(env).catch(() => { console.error('Stock alert check temporarily unavailable') })
   },

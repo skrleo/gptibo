@@ -34,6 +34,28 @@ export async function sendRechargeReminderEmail(env: Env, to: string, message: R
   await sendEmail(env, to, message, 'recharge-reminder/' + id)
 }
 
+// The template keeps the Go-era __RECHARGE_*__ placeholder names.
+export type PartnerOrderDetails = { shop: string; amount: string; product: string; customer: string; completed: string; orderId: string }
+export function partnerOrderCompletedMessage(details: PartnerOrderDetails) {
+  const values: Record<string, string> = {
+    '__RECHARGE_SHOP_NAME__': details.shop,
+    '__RECHARGE_ORDER_AMOUNT__': details.amount,
+    '__RECHARGE_ORDER_PRODUCT__': details.product,
+    '__RECHARGE_ORDER_CUSTOMER__': details.customer,
+    '__RECHARGE_ORDER_COMPLETED__': details.completed,
+    '__RECHARGE_ORDER_ID__': details.orderId,
+  }
+  const escape = (value: string) => value.replace(/[&<>"']/g, char => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[char]!)
+  const template = emailTemplates['partner-order-completed']
+  // One pass prevents shop or customer text from being interpreted as another placeholder.
+  const pattern = /__RECHARGE_(?:SHOP_NAME|ORDER_AMOUNT|ORDER_PRODUCT|ORDER_CUSTOMER|ORDER_COMPLETED|ORDER_ID)__/g
+  return { subject: template.subject, html: template.html.replace(pattern, key => escape(values[key]).replaceAll('\n', '<br />')), text: template.text.replace(pattern, key => values[key]) }
+}
+
+export async function sendPartnerOrderCompletedEmail(env: Env, to: string, message: ReturnType<typeof partnerOrderCompletedMessage>, orderId: string) {
+  await sendEmail(env, to, message, 'partner-order/' + orderId)
+}
+
 export type SecurityAlertDetails = { window: string; totals: string; routes: string }
 export function securityAlertMessage(details: SecurityAlertDetails) {
   const values: Record<string, string> = {
