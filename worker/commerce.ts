@@ -358,8 +358,21 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
     return json({ rows, total: count?.total ?? 0, page, deliveryEnabled: false })
   }
   if (path === '/api/admin/audit' && method === 'GET') {
-    const rows = (await db.prepare("SELECT * FROM admin_audit WHERE action='plan-update' ORDER BY created_at DESC LIMIT 100").all()).results
-    return json({ rows })
+    const action = url.searchParams.get('action')?.trim() ?? ''
+    const target = url.searchParams.get('target')?.trim() ?? ''
+    const query = url.searchParams.get('q')?.trim() ?? ''
+    if (action.length > 64 || target.length > 64 || query.length > 120) throw new ApiError('筛选条件无效。')
+    const { page, offset } = pageParams(url)
+    const conditions: string[] = []; const values: Value[] = []
+    if (action) { conditions.push('action=?'); values.push(action) }
+    if (target) { conditions.push('target_id=?'); values.push(target) }
+    if (query) { conditions.push("note LIKE '%' || ? || '%'"); values.push(query) }
+    const where = conditions.length ? ' WHERE ' + conditions.join(' AND ') : ''
+    const [rows, counted] = await db.batch([
+      db.prepare('SELECT id,action,target_id,note,created_at FROM admin_audit' + where + ' ORDER BY created_at DESC LIMIT 20 OFFSET ?').bind(...values, offset),
+      db.prepare('SELECT COUNT(*) total FROM admin_audit' + where).bind(...values),
+    ]) as { results: unknown[] }[]
+    return json({ rows: rows.results, total: (counted.results[0] as { total: number }).total })
   }
   if (path === '/api/admin/security' && method === 'GET') return json(await securitySummary(env))
   throw new ApiError('未找到管理接口。', 404)

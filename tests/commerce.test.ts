@@ -1681,3 +1681,25 @@ test('admin mailbox comes from server configuration and rotation revokes session
   assert.equal((await mail.send()).status, 503)
   assert.equal(mail.mails.length, 1)
 })
+
+test('admin audit lists every action with filters and pagination, and stays admin-only', async t => {
+  const s = await setup(t)
+  const admin = await s.login()
+  const now = Date.now()
+  for (const [id, action, target, note, at] of [
+    ['a1', 'plan-update', 'plus', 'plus: 139→150', now - 1000],
+    ['a2', 'partner-create', 'P1', 'opened store', now - 2000],
+    ['a3', 'plan-update', 'pro-5x', 'pro-5x: enabled 0→1', now - 3000],
+  ] as const) s.db.prepare('INSERT INTO admin_audit(id,action,target_id,note,created_at) VALUES (?,?,?,?,?)').run(id, action, target, note, at)
+  assert.equal((await s.request('/api/admin/audit', undefined, s.cookie)).status, 401)
+  const all = await (await s.request('/api/admin/audit', undefined, admin)).json()
+  assert.equal(all.total, 3); assert.deepEqual(all.rows.map((r: { id: string }) => r.id), ['a1', 'a2', 'a3'])
+  const plans = await (await s.request('/api/admin/audit?action=plan-update', undefined, admin)).json()
+  assert.deepEqual(plans.rows.map((r: { id: string }) => r.id), ['a1', 'a3']); assert.equal(plans.total, 2)
+  const target = await (await s.request('/api/admin/audit?target=P1', undefined, admin)).json()
+  assert.deepEqual(target.rows.map((r: { id: string }) => r.id), ['a2'])
+  const query = await (await s.request('/api/admin/audit?q=' + encodeURIComponent('enabled'), undefined, admin)).json()
+  assert.deepEqual(query.rows.map((r: { id: string }) => r.id), ['a3'])
+  const paged = await (await s.request('/api/admin/audit?page=2', undefined, admin)).json()
+  assert.equal(paged.total, 3); assert.equal(paged.rows.length, 0)
+})

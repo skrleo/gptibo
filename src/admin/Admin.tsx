@@ -17,7 +17,7 @@ import { useResource } from '@/lib/use-resource'
 import { Feedback, WorkspaceBoot } from '@/components/workspace-loading'
 import { useSession } from '@/lib/use-session'
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
-import { ArrowLeft, ArrowUpRight, Check, ClipboardList, FileText, LayoutDashboard, LogOut, Mail, Package, Plug, RefreshCw, Search, ShieldCheck, Sun, Moon, MessageCircle, ChartNoAxesCombined } from 'lucide-react'
+import { ArrowLeft, ArrowUpRight, Check, ClipboardList, FileText, History, LayoutDashboard, LogOut, Mail, Package, Plug, RefreshCw, Search, ShieldCheck, Sun, Moon, MessageCircle, ChartNoAxesCombined } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/copy-button'
 import { Badge } from '@/components/ui/badge'
@@ -49,7 +49,7 @@ const money = (cents: number) => new Intl.NumberFormat('zh-CN', { style: 'curren
 const time = (value: number | string) => new Date(typeof value === 'string' && !value.includes('T') ? value.replace(' ', 'T') + 'Z' : value).toLocaleString('zh-CN', { hour12: false })
 const productName = (plan: string) => emailProduct(plan) ? productNameForId(emailProduct(plan)!.productId) : productNameForPlan(plan)
 const views = [
-  { id: 'security', label: '安全审计', icon: ShieldCheck },
+  { id: 'security', label: '安全审计', icon: ShieldCheck }, { id: 'audit', label: '操作审计', icon: History },
   { id: 'overview', label: '运营概览', icon: LayoutDashboard }, { id: 'orders', label: '订单管理', icon: ClipboardList },
   { id: 'tickets', label: '代理工单', icon: MessageCircle },
   { id: 'refunds', label: '退款与售后', icon: ShieldCheck },
@@ -147,7 +147,7 @@ function PlansPage({ revision, onUpdated }: { revision: number; onUpdated: () =>
   const [edit, setEdit] = useState<CatalogPlan>()
   const [importing, setImporting] = useState(false); const [importMsg, setImportMsg] = useState(''); const [importError, setImportError] = useState('')
   const fileInput = useRef<HTMLInputElement>(null)
-  const audit = useResource<{ rows: { id: string; target_id: string; note: string; created_at: number }[] }>('/api/admin/audit', revision)
+  const audit = useResource<{ rows: { id: string; target_id: string; note: string; created_at: number }[] }>('/api/admin/audit?action=plan-update', revision)
   async function importFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]
     event.target.value = ''
@@ -170,6 +170,33 @@ function InterestPage({ revision }: { revision: number }) {
 }
 function IntegrationsPage({ revision }: { revision: number }) {
   return <div className="integration-workspace"><PaymentChannelsPanel revision={revision} /><div className="integration-services"><RechargeIntegrationsPage revision={revision} /><XGiftPanel revision={revision} /></div></div>
+}
+const AUDIT_ACTIONS = [
+  ['plan-update', '套餐修改'], ['customer-create', '客户创建'], ['customer-edit', '客户资料修改'],
+  ['customer-account-create', '客户账号新增'], ['customer-account-edit', '客户账号修改'], ['customer-subscription', '会员记录录入'],
+  ['partner-create', '代理开通'], ['partner-default-prices', '默认拿货价调整'], ['partner-announcement', '代理公告修改'],
+  ['support-contacts', '联系方式修改'], ['accounting-costs', '采购成本设置'], ['payout-cooldown-reset', '结算冷却重置'],
+  ['platform-order-query', '平台订单核对'],
+] as const
+const auditActionLabel = (action: string) => AUDIT_ACTIONS.find(([id]) => id === action)?.[1] ?? action
+function AuditPage({ revision }: { revision: number }) {
+  const [action, setAction] = useState(''); const [target, setTarget] = useState(''); const [query, setQuery] = useState(''); const [page, setPage] = useState(1)
+  const params = new URLSearchParams()
+  if (action) params.set('action', action)
+  if (target) params.set('target', target)
+  if (query) params.set('q', query)
+  params.set('page', String(page))
+  const { data, error, loading } = useResource<{ rows: { id: string; action: string; target_id: string; note: string; created_at: number }[]; total: number }>('/api/admin/audit?' + params.toString(), revision)
+  return <section className="admin-panel">
+    <form className="admin-filters" onSubmit={e => { e.preventDefault(); setPage(1) }}>
+      <Input value={target} onChange={e => setTarget(e.target.value)} placeholder="按对象筛选（订单号 / 套餐 / 代理 ID）" aria-label="按对象筛选" maxLength={64} />
+      <Input value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索操作说明" aria-label="搜索操作说明" maxLength={120} />
+      <select aria-label="操作类型" value={action} onChange={e => { setAction(e.target.value); setPage(1) }}><option value="">全部动作</option>{AUDIT_ACTIONS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
+      <Button type="submit" variant="outline">查询</Button>
+    </form>
+    <Feedback error={error} loading={loading} data={data} shape="compact" />
+    {data && <>{data.rows.length ? <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>时间</th><th>操作类型</th><th>操作对象</th><th>说明</th></tr></thead><tbody>{data.rows.map(row => <tr key={row.id}><td><small>{time(row.created_at)}</small></td><td><span className="admin-pill">{auditActionLabel(row.action)}</span></td><td><span className="admin-order-id" title={row.target_id}>{row.target_id}</span></td><td>{row.note}</td></tr>)}</tbody></table></div> : <div className="admin-empty"><History size={28} /><h3>没有符合条件的操作记录</h3><p>调整筛选条件，或先在对应功能页执行管理操作。</p></div>}<Pagination page={page} total={data.total} onChange={setPage} /></>}
+  </section>
 }
 function RechargeIntegrationsPage({ revision }: { revision: number }) {
   const { data, error, loading } = useResource<{ integrations: { resend: boolean; alipay: boolean; supplier: boolean; supplierCheckout: boolean } }>('/api/admin/overview', revision)
@@ -260,5 +287,5 @@ export default function Admin() {
       <Button type="submit" disabled={!loginHuman.ready || busy || sending || !session.mailReady || !username.trim() || !challenge || challenge.username !== username.trim() || emailCode.length !== 6 || code.length !== 6}>{busy ? '正在登录…' : '登录后台'}</Button>
     </form>}<small>仅授权管理员可访问</small></div></main>
   const current = views.find(v => v.id === view)!
-  return <div className="admin-shell"><aside className="admin-sidebar"><a className="admin-brand" href="/admin"><BrandMark /><strong>Gift2Card</strong></a><span className="admin-workspace-label">管理工作台</span><nav aria-label="后台导航">{views.map(item => <Button variant="ghost" key={item.id} aria-current={view === item.id ? 'page' : undefined} onClick={() => setView(item.id)}><item.icon size={17} />{item.label}</Button>)}</nav><div className="admin-sidebar-bottom"><span><ShieldCheck size={15} />{session.username}</span><Button variant="ghost" onClick={() => void logout()} disabled={busy}><LogOut size={15} />退出登录</Button></div></aside><div className="admin-workspace"><header className="admin-topbar"><span>Gift2Card / {current.label}</span><div><a href="/" target="_blank" rel="noreferrer">查看前台 <ArrowUpRight size={14} /></a><Button variant="ghost" size="icon" aria-label={dark ? '切换亮色模式' : '切换暗色模式'} onClick={() => setDark(v => !v)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</Button></div></header><main className="admin-main"><div className="admin-page-heading"><div><span>WORKSPACE</span><h1 ref={heading} tabIndex={-1}>{current.label}</h1><p>{view === 'orders' ? '从创建到完成，查看订单与处理记录。' : view === 'plans' ? '管理售价与销售状态，变更保留记录。' : view === 'accounting' ? '筛选订单查看净利润，按清账周期保存统计。' : view === 'invoices' ? '管理代理开票申请与手续费收款，登记平台提交进度。' : view === 'customers' ? '查看全部客户的会员账号、到期时间与续费记录。' : view === 'contacts' ? '设置平台商店向客户展示的联系方式。' : view === 'integrations' ? '管理收款方式、平台手续费与业务服务。' : '基于服务器记录，了解服务与订单进展。'}</p></div><Button variant="outline" onClick={() => { setRevision(v => v + 1); void checkSession() }}><RefreshCw size={15} />刷新</Button></div><TicketAlerts onOpen={() => setView('tickets')} onRefunds={() => { setView('refunds'); setRevision(v => v + 1) }} /><Feedback error={sessionError} />{view === 'tickets' && <TicketWorkspace admin revision={revision} onOrder={setDetail} />}{view === 'security' && <SecurityPage revision={revision} />}{view === 'overview' && <OverviewPage revision={revision} onSelect={setDetail} onOrders={() => setView('orders')} onVisitors={() => setView('visitors')} />}{view === 'orders' && <OrdersPage revision={revision} onSelect={setDetail} />}{view === 'refunds' && <RefundsPage revision={revision} />}{view === 'plans' && <PlansPage revision={revision} onUpdated={() => setRevision(v => v + 1)} />}{view === 'interest' && <InterestPage revision={revision} />}{view === 'contacts' && <SupportContactsPanel endpoint="/api/admin/support-contacts" revision={revision} />}{view === 'integrations' && <IntegrationsPage revision={revision} />}{view === 'partners' && <PartnersPage revision={revision} />}{view === 'visitors' && <AdminVisitorsPage revision={revision} />}{view === 'accounting' && <AccountingPage revision={revision} />}{view === 'invoices' && <InvoiceWorkspace admin revision={revision} />}{view === 'customers' && <CustomerManagement admin revision={revision} />}<footer className="admin-footer"><Check size={13} />订单与操作记录可追溯</footer></main></div>{detail && <OrderDetail key={detail} id={detail} onClose={() => setDetail(undefined)} onUpdated={() => setRevision(v => v + 1)} />}</div>
+  return <div className="admin-shell"><aside className="admin-sidebar"><a className="admin-brand" href="/admin"><BrandMark /><strong>Gift2Card</strong></a><span className="admin-workspace-label">管理工作台</span><nav aria-label="后台导航">{views.map(item => <Button variant="ghost" key={item.id} aria-current={view === item.id ? 'page' : undefined} onClick={() => setView(item.id)}><item.icon size={17} />{item.label}</Button>)}</nav><div className="admin-sidebar-bottom"><span><ShieldCheck size={15} />{session.username}</span><Button variant="ghost" onClick={() => void logout()} disabled={busy}><LogOut size={15} />退出登录</Button></div></aside><div className="admin-workspace"><header className="admin-topbar"><span>Gift2Card / {current.label}</span><div><a href="/" target="_blank" rel="noreferrer">查看前台 <ArrowUpRight size={14} /></a><Button variant="ghost" size="icon" aria-label={dark ? '切换亮色模式' : '切换暗色模式'} onClick={() => setDark(v => !v)}>{dark ? <Sun size={17} /> : <Moon size={17} />}</Button></div></header><main className="admin-main"><div className="admin-page-heading"><div><span>WORKSPACE</span><h1 ref={heading} tabIndex={-1}>{current.label}</h1><p>{view === 'orders' ? '从创建到完成，查看订单与处理记录。' : view === 'plans' ? '管理售价与销售状态，变更保留记录。' : view === 'audit' ? '追溯全部管理操作，可按动作类型、操作对象与说明检索。' : view === 'accounting' ? '筛选订单查看净利润，按清账周期保存统计。' : view === 'invoices' ? '管理代理开票申请与手续费收款，登记平台提交进度。' : view === 'customers' ? '查看全部客户的会员账号、到期时间与续费记录。' : view === 'contacts' ? '设置平台商店向客户展示的联系方式。' : view === 'integrations' ? '管理收款方式、平台手续费与业务服务。' : '基于服务器记录，了解服务与订单进展。'}</p></div><Button variant="outline" onClick={() => { setRevision(v => v + 1); void checkSession() }}><RefreshCw size={15} />刷新</Button></div><TicketAlerts onOpen={() => setView('tickets')} onRefunds={() => { setView('refunds'); setRevision(v => v + 1) }} /><Feedback error={sessionError} />{view === 'tickets' && <TicketWorkspace admin revision={revision} onOrder={setDetail} />}{view === 'security' && <SecurityPage revision={revision} />}{view === 'audit' && <AuditPage revision={revision} />}{view === 'overview' && <OverviewPage revision={revision} onSelect={setDetail} onOrders={() => setView('orders')} onVisitors={() => setView('visitors')} />}{view === 'orders' && <OrdersPage revision={revision} onSelect={setDetail} />}{view === 'refunds' && <RefundsPage revision={revision} />}{view === 'plans' && <PlansPage revision={revision} onUpdated={() => setRevision(v => v + 1)} />}{view === 'interest' && <InterestPage revision={revision} />}{view === 'contacts' && <SupportContactsPanel endpoint="/api/admin/support-contacts" revision={revision} />}{view === 'integrations' && <IntegrationsPage revision={revision} />}{view === 'partners' && <PartnersPage revision={revision} />}{view === 'visitors' && <AdminVisitorsPage revision={revision} />}{view === 'accounting' && <AccountingPage revision={revision} />}{view === 'invoices' && <InvoiceWorkspace admin revision={revision} />}{view === 'customers' && <CustomerManagement admin revision={revision} />}<footer className="admin-footer"><Check size={13} />订单与操作记录可追溯</footer></main></div>{detail && <OrderDetail key={detail} id={detail} onClose={() => setDetail(undefined)} onUpdated={() => setRevision(v => v + 1)} />}</div>
 }
