@@ -14,7 +14,7 @@ import { authRoute, requireAdmin } from './admin-auth.ts'
 import { emailValue, mailConfigured, partnerAuth } from './partner-auth.ts'
 import { adminPartnerRoutes, partnerCatalog, partnerRoutes, resolvePartner } from './partners.ts'
 import { paymentAction, reconcilePayments } from './payments/service.ts'
-import { alipayConfigured, availablePaymentMethods, usdtConfigured } from './payments/providers.ts'
+import { alipayConfigured, usdtConfigured, enabledPaymentMethods, paymentSettingsRoute } from './payments/providers.ts'
 import { paymentTesting } from './payments/testing.ts'
 import { supportContactsRoute, supportContactsSettings } from './support-contacts.ts'
 import { checkoutEnabled as supplierCheckoutEnabled, configured as supplierConfigured, productMap, RechargeError } from './recharge/client.ts'
@@ -85,6 +85,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       if (path.startsWith('/api/admin/accounting')) return await accountingRoutes(request, env, url)
       if (path === '/api/admin/visitors' && method === 'GET') return json(await adminVisitorSummary(env, url))
       if (path === '/api/admin/support-contacts') return await supportContactsRoute(request, env)
+      if (path === '/api/admin/payments/settings') return await paymentSettingsRoute(request, env)
       if (path.startsWith('/api/admin/payments/test')) return await paymentTesting(request, env, url)
       if (path.startsWith('/api/admin/refunds')) return await adminRefunds(request, env, url)
       if (path.startsWith('/api/admin/tickets')) return await adminTicketRoutes(request, env, url)
@@ -107,7 +108,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       const offers = (catalog.plans as Plan[]).map(plan => ({ ...plan, enabled: plan.enabled && (
         isXGiftPlan(plan.id) ? xgiftCheckoutEnabled(env) : plan.id === 'gmail-account' ? (gmail || email) : isDeliverySupplierPlan(plan.id) ? (delivery_supplier || (emailProduct(plan.id) ? email : false)) : emailProduct(plan.id) ? email : testing || (live && Boolean(mapped[plan.id]))
       ) ? 1 : 0 }))
-      return json({ ...catalog, supportContacts: support.contacts, announcement, plans: offers, mode: live ? 'live' : 'demo', checkoutEnabled: testing || live || email || xgiftCheckoutEnabled(env), testingEnabled: testing, paymentMethods: availablePaymentMethods(env) }, 200, { 'Server-Timing': `catalog;dur=${(performance.now() - started).toFixed(1)}` })
+      return json({ ...catalog, supportContacts: support.contacts, announcement, plans: offers, mode: live ? 'live' : 'demo', checkoutEnabled: testing || live || email || xgiftCheckoutEnabled(env), testingEnabled: testing, paymentMethods: await enabledPaymentMethods(env) }, 200, { 'Server-Timing': `catalog;dur=${(performance.now() - started).toFixed(1)}` })
     }
     if (path === '/api/orders/client' && method === 'POST') {
       await body(request)

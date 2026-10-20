@@ -7,7 +7,7 @@ import { emailCheckoutEnabled } from '../email-delivery.ts'
 import { fulfillGmail, gmailCheckoutEnabled } from '../account_supplier/service.ts'
 import { ApiError, body, json, type Env } from '../platform.ts'
 import { getOrder, type Order } from '../order-state.ts'
-import { availablePaymentMethods, paymentProvider } from './providers.ts'
+import { enabledPaymentMethods, paymentProvider } from './providers.ts'
 import { expectedMicros, formatUsdt, USDT_QUERY_COOLDOWN_MS, usdtRate } from './usdt.ts'
 import type { PaymentOrder, PaymentResult, PaymentProvider } from './types.ts'
 
@@ -106,14 +106,14 @@ export async function paymentAction(request: Request, env: Env, order: Order, ad
   if (!(await env.INTEREST_LIMITER.limit({ key: 'payment:' + order.owner_hash })).success) throw new ApiError('操作较频繁，请稍后再试。', 429)
   if (data.action === 'options') {
     const payment = await findPayment(env, order.id)
-    return json({ payment: payment ? paymentView(payment, Boolean((await getOrder(env, order.id)).redemption_blocked)) : null, methods: availablePaymentMethods(env) })
+    return json({ payment: payment ? paymentView(payment, Boolean((await getOrder(env, order.id)).redemption_blocked)) : null, methods: await enabledPaymentMethods(env) })
   }
   let payment = await findPayment(env, order.id)
   if (!payment && data.action === 'create') {
     if (!canCreate) throw new ApiError('真实收款尚未开放。', 503)
     // The buyer's requested channel wins; the legacy defaults only fill silence.
     const method = typeof data.method === 'string' && data.method.trim() ? data.method.trim() : emailProduct(order.plan) || isXGiftPlan(order.plan) ? 'alipay' : env.PAYMENT_PROVIDER ?? ''
-    if (!availablePaymentMethods(env).some(m => m.method === method)) throw new ApiError('该支付方式暂不可用。', 409)
+    if (!(await enabledPaymentMethods(env)).some(m => m.method === method)) throw new ApiError('该支付方式暂不可用。', 409)
     const provider = paymentProvider(env, method)
     if (provider.id !== 'usdt') notifyUrl(env, provider.id)
     const now = Date.now()

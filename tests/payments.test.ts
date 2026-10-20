@@ -457,3 +457,28 @@ test('USDT notifications are always rejected and refunds stay on the manual refe
   assert.equal((await s.request('/api/admin/refunds/' + row, { action: 'execute-refund', version: 1, reference: txid(9), note: '人工原路退回' }, admin)).status, 200)
   assert.equal(s.db.prepare('SELECT refunded_cents FROM orders WHERE id=?').get(s.id)!.refunded_cents, 13900)
 })
+test('admin payment settings decide which checkout channels buyers see', async t => {
+  const s = await setup(t); s.live(); withUsdt(s, 'usdt')
+  const admin = await s.admin()
+  const settings = async () => (await (await s.request('/api/admin/payments/settings', undefined, admin)).json()) as { enabledProviders: string[]; version: number; checkout: boolean; channels: { id: string; configured: boolean }[] }
+  // Default: no stored row means every configured channel is enabled.
+  let current = await settings()
+  assert.deepEqual(current.enabledProviders, ['alipay', 'usdt'])
+  assert.equal(current.version, 0); assert.equal(current.checkout, true)
+  assert.deepEqual((await (await s.request('/api/catalog')).json()).paymentMethods.map((m: { method: string }) => m.method), ['alipay', 'usdt'])
+  // Saving a subset hides it from the catalog and blocks new payments on it.
+  assert.equal((await s.request('/api/admin/payments/settings', { providers: ['alipay'], version: current.version, feeRatesBps: { alipay: 0, usdt: 0 } }, admin)).status, 200)
+  current = await settings()
+  assert.deepEqual(current.enabledProviders, ['alipay']); assert.equal(current.version, 1)
+  assert.deepEqual((await (await s.request('/api/catalog')).json()).paymentMethods.map((m: { method: string }) => m.method), ['alipay'])
+  const other = await (await s.request('/api/orders', { plan: 'plus', expectedPrice: 13900, key: crypto.randomUUID(), email: 'test@example.test' }, s.cookie)).json()
+  s.db.prepare("UPDATE orders SET mode='live' WHERE id=?").run(other.order.id)
+  assert.equal((await s.request(`/api/orders/${other.order.id}/payment`, { action: 'create', method: 'usdt' }, s.cookie)).status, 409)
+  await s.request(`/api/orders/${other.order.id}/payment`, { action: 'create', method: 'alipay' }, s.cookie)
+  assert.equal((await findPayment(s.env, other.order.id))!.provider, 'alipay')
+  // Stale versions, unknown channels and non-zero fee rates all fail closed.
+  assert.equal((await s.request('/api/admin/payments/settings', { providers: ['alipay'], version: 0 }, admin)).status, 409)
+  assert.equal((await s.request('/api/admin/payments/settings', { providers: ['wxpay-main'], version: current.version }, admin)).status, 400)
+  assert.equal((await s.request('/api/admin/payments/settings', { providers: ['alipay'], version: current.version, feeRatesBps: { alipay: 300 } }, admin)).status, 400)
+  assert.equal((await s.request('/api/admin/payments/settings')).status, 401)
+})
