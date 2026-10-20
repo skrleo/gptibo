@@ -94,6 +94,7 @@ function setup(t: Context) {
     env.PARTNER_AUTH_SECRET = 'partner-auth-private-secret-of-at-least-32-characters'
     const token = 'a'.repeat(64); const now = Date.now()
     db.prepare('INSERT INTO partners(id,slug,name,email,created_at,updated_at) VALUES (?,?,?,?,?,?)').run('partner-test','partner-test','测试代理','partner@example.test',now,now)
+    db.prepare("INSERT INTO partner_settings(partner_id,payout_phone,payout_name,version,updated_at) VALUES ('partner-test','13800001111','测试收款人',0,0)").run()
     db.prepare('INSERT INTO partner_prices(partner_id,plan,cost_cents,price_cents) VALUES (?,?,?,?)').run('partner-test','plus',11000,15900)
     db.prepare('INSERT INTO partner_sessions(token_hash,partner_id,auth_version,credential_version,expires_at) VALUES (?,?,?,?,?)').run(digest(token),'partner-test',0,digest(env.PARTNER_AUTH_SECRET),now+3600000)
     return '__Host-ymx_partner=' + token
@@ -989,7 +990,7 @@ test('refund commit guard uses this order even when another order has the expect
 
 test('external partial refund reconciles paid partner commission once and blocks unresolved payouts', async t => {
   const s = setup(t); const partner = s.partner(); const buyer = await s.buyer(); const order = await partnerOrder(s, buyer); const admin = await s.login()
-  assert.equal((await s.call('/api/partner/payouts', { key: crypto.randomUUID(), recipient: '支付宝测试账户 / 测试人' }, partner)).status, 201)
+  assert.equal((await s.call('/api/partner/payouts', { key: crypto.randomUUID(), accountVersion: 0 }, partner)).status, 201)
   const payout = s.db.prepare('SELECT * FROM partner_payouts').get()!
   assert.equal((await s.call('/api/admin/partner-payouts/' + payout.id, { action: 'approve', version: 0, note: '审核提现' }, admin)).status, 200)
   const refund = await approveRefund(s, order.id, buyer, admin, 1000)
@@ -1046,7 +1047,7 @@ test('confirmed supplier rejection releases this refund hold and preserves a com
 
 test('unmatched supplier refund freezes customer operations and its pending payout while admin income uses confirmed upstream refund', async t => {
   const s = setup(t); const partner = s.partner(); const buyer = await s.buyer(); const order = await partnerOrder(s,buyer); const admin = await s.login()
-  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), recipient: '支付宝测试账户 / 测试人' },partner)).status,201)
+  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), accountVersion: 0 },partner)).status,201)
   const payout = s.db.prepare('SELECT id FROM partner_payouts').get()!.id
   s.override(path => path === '/v1/orders/ord_test' ? Response.json({ data: { ...s.remoteOrder(), payment_status: 'partially_refunded', refunded_amount: '10.00', merchant_margin: '39.00' } }) : undefined)
   const current = (await (await s.query(order.id,buyer)).json()).order
@@ -1083,7 +1084,7 @@ test('rejecting this refund cannot clear the separate hold caused by an unmatche
 test('partial Recharge refund caps profit at actual supplier margin and claws back the paid commission exactly once', async t => {
   const s = setup(t); const partner = s.partner(); const buyer = await s.buyer(); const order = await partnerOrder(s,buyer); const admin = await s.login()
   assert.equal((await (await s.call('/api/partner/dashboard',undefined,partner)).json()).stats.available,4900)
-  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), recipient: '支付宝测试账户 / 测试人' },partner)).status,201)
+  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), accountVersion: 0 },partner)).status,201)
   const payout = s.db.prepare('SELECT * FROM partner_payouts').get()!
   assert.equal(payout.amount_cents,4900)
   assert.equal((await s.call('/api/admin/partner-payouts/'+payout.id,{ action: 'approve', version: 0, note: '审核通过' },admin)).status,200)
@@ -1105,7 +1106,7 @@ test('partial Recharge refund caps profit at actual supplier margin and claws ba
 
 test('a payout reserved at an old supplier margin cannot be approved after the confirmed margin changes', async t => {
   const s = setup(t); const partner = s.partner(); const buyer = await s.buyer(); const order = await partnerOrder(s,buyer); const admin = await s.login()
-  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), recipient: '支付宝测试账户 / 测试人' },partner)).status,201)
+  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), accountVersion: 0 },partner)).status,201)
   const payout = s.db.prepare('SELECT id FROM partner_payouts').get()!.id
   s.override(path => path === '/v1/orders/ord_test' ? Response.json({ data: { ...s.remoteOrder(), supply_amount: '119.00', merchant_margin: '40.00' } }) : undefined)
   await s.query(order.id,buyer)
@@ -1126,17 +1127,17 @@ test('partner configured price remains visible while unsafe upstream supply reje
 test('payout submission and approval verify current supplier finances even when no webhook or customer refresh ran', async t => {
   const s = setup(t); const partner = s.partner(); const buyer = await s.buyer(); await partnerOrder(s,buyer); const admin = await s.login()
   s.override(path => { if (path === '/v1/orders/ord_test') throw new Error('provider outage') })
-  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), recipient: '支付宝测试账户 / 测试人' },partner)).status,503)
+  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), accountVersion: 0 },partner)).status,503)
   assert.equal(s.db.prepare('SELECT COUNT(*) n FROM partner_payouts').get()!.n,0)
   s.override(undefined)
-  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), recipient: '支付宝测试账户 / 测试人' },partner)).status,201)
+  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), accountVersion: 0 },partner)).status,201)
   const payout = s.db.prepare('SELECT id FROM partner_payouts').get()!.id
   s.override(path => path === '/v1/orders/ord_test' ? Response.json({ data: { ...s.remoteOrder(), payment_status: 'partially_refunded', refunded_amount: '10.00', merchant_margin: '39.00' } }) : undefined)
   assert.equal((await s.call('/api/admin/partner-payouts/'+payout,{ action: 'approve', version: 0, note: '审核提现' },admin)).status,409)
   assert.equal(s.db.prepare('SELECT reviewed_at FROM partner_payouts').get()!.reviewed_at,null)
   assert.equal(s.db.prepare('SELECT financial_hold FROM recharge_orders').get()!.financial_hold,1)
   assert.equal((await s.call('/api/admin/partner-payouts/'+payout,{ action: 'rejected', version: 0, note: '收益核对后重新申请' },admin)).status,200)
-  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), recipient: '支付宝测试账户 / 测试人' },partner)).status,409)
+  assert.equal((await s.call('/api/partner/payouts',{ key: crypto.randomUUID(), accountVersion: 0 },partner)).status,409)
   assert.equal(s.db.prepare('SELECT COUNT(*) n FROM partner_payouts').get()!.n,1)
 })
 

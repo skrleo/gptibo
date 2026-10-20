@@ -1,13 +1,18 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { customerFixture } from './customer-fixture.ts'
-import { notificationSettingsRoute, sendDuePartnerOrderEmails } from '../worker/partner-notifications.ts'
+import { notificationSettingsRoute, payoutAccountRoute, sendDuePartnerOrderEmails } from '../worker/partner-settings.ts'
+import { partnerDashboard } from '../worker/partners.ts'
 import { partnerOrderCompletedMessage } from '../worker/email.ts'
 import { ApiError, type Env } from '../worker/platform.ts'
 import type { Partner } from '../worker/partner-auth.ts'
 
+const origin = 'https://api.example.test'
 const request = (payload: unknown) => new Request('https://api.example.test/api/partner/notification-settings', {
-  method: 'POST', headers: { 'content-type': 'application/json', origin: 'https://api.example.test' }, body: JSON.stringify(payload),
+  method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify(payload),
+})
+const payoutRequest = (payload: unknown) => new Request('https://api.example.test/api/partner/payout-account', {
+  method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify(payload),
 })
 
 test('notification settings toggle saves with optimistic concurrency and reports the login email', async t => {
@@ -92,4 +97,24 @@ test('message builder escapes customer text and keeps both languages', () => {
   assert.match(mail.html, /Alpha&lt;Shop/)
   assert.match(mail.html, /a&amp;b@example\.test/)
   assert.doesNotMatch(mail.html, /__RECHARGE_/)
+})
+
+test('payout account binds the default payee and surfaces through the dashboard', async t => {
+  const s = await customerFixture(); t.after(() => s.db.close())
+  const env = s.env
+  const now = Date.now()
+  await s.db.prepare('INSERT INTO partners(id,slug,name,email,created_at,updated_at) VALUES (?,?,?,?,?,?)').run('p1', 'alpha', 'Alpha', 'owner@example.test', now, now)
+  const partner = { id: 'p1', slug: 'alpha', name: 'Alpha', email: 'owner@example.test', active: 1, version: 1, auth_version: 1, created_at: 0 } as Partner
+
+  // Unbound: the dashboard reports an empty account with version 0.
+  let dashboard = await partnerDashboard(env, partner)
+  assert.deepEqual(dashboard.payoutAccount, { phone: '', name: '', version: 0 })
+
+  await assert.rejects(() => payoutAccountRoute(payoutRequest({ phone: '123', name: '', version: 0 }), env, partner), (e: unknown) => e instanceof ApiError && e.status === 400)
+  let saved = await (await payoutAccountRoute(payoutRequest({ phone: '13800001111', name: '张三', version: 0 }), env, partner)).json() as { phone: string; name: string; version: number }
+  assert.deepEqual(saved, { phone: '13800001111', name: '张三', version: 1 })
+  await assert.rejects(() => payoutAccountRoute(payoutRequest({ phone: '13900002222', name: '李四', version: 0 }), env, partner), (e: unknown) => e instanceof ApiError && e.status === 409)
+
+  dashboard = await partnerDashboard(env, partner)
+  assert.deepEqual(dashboard.payoutAccount, { phone: '13800001111', name: '张三', version: 1 })
 })

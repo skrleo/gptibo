@@ -16,7 +16,7 @@ import { resetPayoutCooldown } from './payout-cooldown.ts'
 import { productOrderRoute, productOrderSettings } from './product-order.ts'
 import { partnerOrderSummary } from './partner-order-summary.ts'
 import { domainBind, domainCheckRoute, domainRemove, domainView } from './custom-domain.ts'
-import { notificationSettingsRoute } from './partner-notifications.ts'
+import { notificationSettingsRoute, payoutAccount, payoutAccountRoute } from './partner-settings.ts'
 import { partnerTicketRoutes } from './tickets.ts'
 
 export async function resolvePartner(env: Env, slug: unknown) {
@@ -62,7 +62,7 @@ export async function partnerDashboard(env: Env, p: Partner) {
   const totals = await env.INTEREST_DB.prepare("SELECT COALESCE(SUM(CASE WHEN status='pending' THEN amount_cents ELSE 0 END),0) pending,COALESCE(SUM(CASE WHEN status='paid' THEN amount_cents ELSE 0 END),0) paid FROM partner_payouts WHERE partner_id=?").bind(p.id).first()
   const lastPayout = await env.INTEREST_DB.prepare('SELECT MAX(created_at) created_at FROM partner_payouts WHERE partner_id=? AND cooldown_exempt=0').bind(p.id).first<{created_at:number|null}>()
   const nextPayoutAt = lastPayout?.created_at == null ? null : lastPayout.created_at + PAYOUT_COOLDOWN_MS
-  return { partner: p, plans, stats: { ...stats, available: Math.max(0,(stats?.available ?? 0)-(debts?.amount ?? 0)), debt: debts?.amount ?? 0, withdrawalHeld: Boolean(held?.n), minimum: MIN_PAYOUT_CENTS, nextPayoutAt, payoutCoolingDown: nextPayoutAt !== null && Date.now() < nextPayoutAt }, payouts, totals, mailReady: mailConfigured(env) }
+  return { partner: p, payoutAccount: await payoutAccount(env, p.id), plans, stats: { ...stats, available: Math.max(0,(stats?.available ?? 0)-(debts?.amount ?? 0)), debt: debts?.amount ?? 0, withdrawalHeld: Boolean(held?.n), minimum: MIN_PAYOUT_CENTS, nextPayoutAt, payoutCoolingDown: nextPayoutAt !== null && Date.now() < nextPayoutAt }, payouts, totals, mailReady: mailConfigured(env) }
 }
 async function orders(env: Env, id: string, url: URL) {
   await settleDue(env, id)
@@ -78,6 +78,7 @@ export async function partnerRoutes(request: Request, env: Env, url: URL) {
   if (path === '/api/partner/support-contacts') return supportContactsRoute(request, env, p)
   if (path === '/api/partner/announcement') return announcementRoute(request, env, p)
   if (path === '/api/partner/notification-settings') return notificationSettingsRoute(request, env, p)
+  if (path === '/api/partner/payout-account') return payoutAccountRoute(request, env, p)
   if (path.startsWith('/api/partner/tickets')) return await partnerTicketRoutes(request, env, url, p)
   if (path === '/api/partner/product-order') return productOrderRoute(request, env, p)
   if (path === '/api/partner/domain' && request.method === 'GET') return json(await domainView(env, p.id))
@@ -106,7 +107,12 @@ export async function partnerRoutes(request: Request, env: Env, url: URL) {
     return json({ ok: true })
   }
   if (path === '/api/partner/payouts' && request.method === 'POST') {
-    const data = await body(request); const recipient = text(data.recipient, 200, '支付宝收款账号与姓名')
+    const data = await body(request)
+    // The payee comes from the bound account; the client only confirms its version.
+    const account = await payoutAccount(env, p.id)
+    if (!account.phone) throw new ApiError('请先绑定支付宝收款账户，再申请提现。', 409)
+    if (data.accountVersion !== account.version) throw new ApiError('收款信息已变更，请刷新后重试。', 409)
+    const recipient = text(account.name + ' ' + account.phone, 200, '支付宝收款账号与姓名')
     if (typeof data.key !== 'string' || !/^[a-f0-9-]{36}$/.test(data.key)) throw new ApiError('请求编号无效。')
     const existing = await db.prepare('SELECT id FROM partner_payouts WHERE partner_id=? AND request_key=?').bind(p.id, data.key).first()
     if (existing) return json({ ok: true })

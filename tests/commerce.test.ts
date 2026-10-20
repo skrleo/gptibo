@@ -1186,9 +1186,10 @@ test('settlement reserves real completed margins once, rejects demo earnings and
   const s = await setup(); t.after(() => s.db.close()); const admin = await s.login(); const id = await seedPartner(s, admin); const mail = mockPartnerMail(t, s); const cookie = await mail.login(); const buyer = await s.buyer()
   const create = async () => { const r = await s.request('/api/orders', { email: 'buyer@example.test', plan: 'plus', expectedPrice: 13900, partner: 'corn-shop', key: crypto.randomUUID() }, buyer); assert.equal(r.status, 201); return (await r.json()).order.id as string }
   const demo = await create(); s.db.prepare("UPDATE orders SET status='success',payment_status='simulated' WHERE id=?").run(demo)
-  assert.equal((await s.request('/api/partner/payouts', { recipient: 'test recipient', key: crypto.randomUUID() }, cookie)).status, 409)
+  s.db.prepare("INSERT INTO partner_settings(partner_id,payout_phone,payout_name,version,updated_at) SELECT id,'13800001111','测试收款人',0,0 FROM partners WHERE slug='corn-shop'").run()
+  assert.equal((await s.request('/api/partner/payouts', { accountVersion: 0, key: crypto.randomUUID() }, cookie)).status, 409)
   const live = await create(); s.db.prepare("UPDATE orders SET mode='live',status='success',payment_status='paid' WHERE id=?").run(live)
-  const payload = { recipient: 'test recipient', key: crypto.randomUUID() }
+  const payload = { accountVersion: 0, key: crypto.randomUUID() }
   const results = await Promise.all([s.request('/api/partner/payouts', payload, cookie), s.request('/api/partner/payouts', payload, cookie)])
   assert.ok(results.every(r => [200,201].includes(r.status)))
   const ps = s.db.prepare('SELECT * FROM partner_payouts').get()!; assert.equal(ps.amount_cents, 3900); assert.equal(s.db.prepare('SELECT COUNT(*) n FROM partner_payouts').get()!.n, 1)
@@ -1253,7 +1254,8 @@ test('concurrent approve and reject preserve exactly one settlement decision and
   const response = await s.request('/api/orders', { email: 'buyer@example.test', plan: 'plus', expectedPrice: 13900, partner: 'corn-shop', key: crypto.randomUUID() }, buyer)
   const order = (await response.json()).order.id
   s.db.prepare("UPDATE orders SET mode='live',status='success',payment_status='paid' WHERE id=?").run(order)
-  assert.equal((await s.request('/api/partner/payouts', { recipient: 'test recipient', key: crypto.randomUUID() }, partner)).status, 201)
+  s.db.prepare("INSERT INTO partner_settings(partner_id,payout_phone,payout_name,version,updated_at) SELECT id,'13800001111','测试收款人',0,0 FROM partners WHERE slug='corn-shop'").run()
+  assert.equal((await s.request('/api/partner/payouts', { accountVersion: 0, key: crypto.randomUUID() }, partner)).status, 201)
   const payout = s.db.prepare('SELECT * FROM partner_payouts').get()!
   assert.equal((await s.request('/api/admin/partner-payouts/' + payout.id, { action: 'approve', note: '审核通过', version: 0 }, admin)).status, 200)
   const results = await Promise.all(['paid', 'rejected'].map(action => s.request('/api/admin/partner-payouts/' + payout.id, { action, note: 'race test', reference: 'test-only', version: 1 }, admin)))
@@ -1326,8 +1328,9 @@ test('refund review freezes delivery, supports cancellation and rejection, and c
 
 async function financeFixture(t: Parameters<Parameters<typeof test>[1]>[0]) {
   const s=await setup(); t.after(()=>s.db.close()); const admin=await s.login(); await seedPartner(s,admin); const mail=mockPartnerMail(t,s); const partner=await mail.login(); const buyer=await s.buyer()
+  s.db.prepare("INSERT INTO partner_settings(partner_id,payout_phone,payout_name,version,updated_at) SELECT id,'13800001111','测试收款人',0,0 FROM partners WHERE slug='corn-shop'").run()
   const create=async()=> { const r=await s.request('/api/orders',{email:'buyer@example.test',plan:'plus',expectedPrice:13900,partner:'corn-shop',key:crypto.randomUUID()},buyer); assert.equal(r.status,201); const id=(await r.json()).order.id; s.db.prepare("UPDATE orders SET mode='live',status='success',payment_status='paid' WHERE id=?").run(id); return id as string }
-  const payout=()=>s.request('/api/partner/payouts',{recipient:'test account / recipient',key:crypto.randomUUID()},partner)
+  const payout=()=>s.request('/api/partner/payouts',{accountVersion:0,key:crypto.randomUUID()},partner)
   const apply=async(id:string)=> { const o=s.db.prepare('SELECT version FROM orders WHERE id=?').get(id)!; const r=await s.request('/api/orders/'+id+'/refunds',{reason:'申请退款',key:crypto.randomUUID(),version:o.version},buyer); assert.equal(r.status,201,await r.clone().text()); return s.db.prepare("SELECT * FROM refund_cases WHERE order_id=? AND status='pending'").get(id)! }
   const review=async(id:unknown,amount:number)=>{const r=await s.request('/api/admin/refunds/'+id,{action:'approve',amountCents:amount,note:'审核同意',version:0},admin); assert.equal(r.status,200,await r.clone().text())}
   const complete=(id:unknown)=>s.request('/api/admin/refunds/'+id,{action:'complete',reference:'TEST-REFUND',note:'已核实退款到账',version:1},admin)
@@ -1403,7 +1406,7 @@ test('withdrawals enforce a 24-hour cooldown atomically, preserve retries and in
   const cooldownMs = 24 * 60 * 60 * 1000
   let dashboard = (await (await s.request('/api/partner/dashboard', undefined, s.partner)).json()).stats
   assert.equal(dashboard.minimum, 1000); assert.equal(dashboard.nextPayoutAt, null); assert.equal(dashboard.payoutCoolingDown, false)
-  const payload = { recipient: 'test account / recipient', key: crypto.randomUUID() }
+  const payload = { accountVersion: 0, key: crypto.randomUUID() }
   assert.equal((await s.request('/api/partner/payouts', payload, s.partner)).status, 201)
   const payout = s.db.prepare('SELECT * FROM partner_payouts').get()!
   assert.equal((await s.request('/api/partner/payouts', payload, s.partner)).status, 200)
