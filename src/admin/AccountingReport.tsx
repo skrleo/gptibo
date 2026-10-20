@@ -7,6 +7,8 @@ import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@
 import { DateTimePicker, WorkspaceSelect, WorkspacePanel, WorkspaceMetrics } from '@/components/workspace-controls'
 import { Feedback } from '@/components/workspace-loading'
 import { useResource } from '@/lib/use-resource'
+import { api, RequestError } from '@/lib/api'
+import { downloadAccountingReport } from '@/lib/report-export'
 import { ORDER_LABELS, type OrderStatus } from '@/lib/demo-orders'
 import type { AccountingReport as Report, AccountingReportTotals } from '../../shared/accounting.ts'
 
@@ -34,8 +36,15 @@ const netProfit=(t:AccountingReportTotals)=>t.profit_cents===null?'待核对':mo
 
 export default function AccountingReport({revision}:{revision:number}) {
   const [filters,setFilters]=useState<Filters>(()=>range())
-  const [applied,setApplied]=useState(()=>query(filters));const [page,setPage]=useState(1);const [refresh,setRefresh]=useState(0);const [validation,setValidation]=useState('');const [details,setDetails]=useState(false)
+  const [applied,setApplied]=useState(()=>query(filters));const [page,setPage]=useState(1);const [refresh,setRefresh]=useState(0);const [validation,setValidation]=useState('');const [details,setDetails]=useState(false);const [exporting,setExporting]=useState(false)
   const {data,error,loading}=useResource<Report>(`/api/admin/accounting/report?${applied}&page=${page}`,revision+refresh)
+  async function exportAll() {
+    if(exporting)return
+    setExporting(true)
+    try{await downloadAccountingReport(await api<Report>(`/api/admin/accounting/report?${applied}&orders=all`))}
+    catch(e){setValidation(e instanceof RequestError?e.message:'导出失败，请稍后重试。')}
+    finally{setExporting(false)}
+  }
   function apply(next=filters) {try{setApplied(query(next));setPage(1);setRefresh(v=>v+1);setValidation('')}catch(e){setValidation(e instanceof Error?e.message:'筛选条件无效。')}}
   function preset(kind:'today'|'yesterday'|'week'|'all') {
     let next={...range(kind==='week'?7:1),status:filters.status}
@@ -69,7 +78,7 @@ export default function AccountingReport({revision}:{revision:number}) {
       {!data.groups.length&&<div className="workspace-empty"><h3>此范围没有订单</h3><p>调整时间或状态后重新查询。</p></div>}
       <p className="workspace-caption">净利润 = 已完成订单付款 − 已完成订单退款 {money(data.totals.completed_refund_cents)} − 采购成本 − 代理分成。已付未完成订单仅计付款金额，未付款订单仅计单数。已清账订单沿用历史采购成本，其余使用当前成本。<br/>{data.totals.held_count>0&&`${data.totals.held_count} 笔完成订单售后或金额待核对；`}{data.totals.missing_cost_count>0&&`${data.totals.missing_cost_count} 笔缺采购成本；`}{data.totals.missing_commission_count>0&&`${data.totals.missing_commission_count} 笔代理分成待核对；`}{data.totals.profit_cents===null&&'核对完成后显示合计净利润。'}统计包含已清和未清订单，更新于 {time(data.asOf)}。</p>
       <Button variant="outline" disabled={!data.totals.order_count} onClick={()=>setDetails(true)}><ReceiptText size={15}/>查看筛选订单明细（{data.totals.order_count}）</Button>
-      <Dialog open={details} onOpenChange={setDetails}><DialogContent className="workspace-dialog motion-dialog"><DialogHeader><DialogTitle>筛选订单明细</DialogTitle><DialogDescription>共 {data.totals.order_count} 单，金额汇总覆盖全部筛选结果。</DialogDescription></DialogHeader>{details&&<><Feedback error={error} loading={loading} data={data}/><Table className="workspace-table"><TableHeader><TableRow>{['订单 / 下单时间','套餐 / 来源','状态','付款','退款','采购成本','代理分成','净利润'].map(s=><TableHead key={s}>{s}</TableHead>)}</TableRow></TableHeader><TableBody>{data.orders.map(o=>{const completed=o.status==='success'&&o.payment_status==='paid';return <TableRow key={o.id}><TableCell><strong>{o.id}</strong><small>{time(o.created_at)}</small></TableCell><TableCell>{o.plan_name}<small>{o.partner_name||'直营'}</small></TableCell><TableCell><Badge variant="secondary">{ORDER_LABELS[o.status as OrderStatus]}</Badge><small>{o.payment_status==='paid'?'已付款':'未付款'}{o.held?' · 待核对':''}</small></TableCell><TableCell>{money(o.paid_cents)}</TableCell><TableCell>{money(o.refund_cents)}</TableCell><TableCell>{!completed?'—':o.cost_cents===null?'待补成本':money(o.cost_cents)}</TableCell><TableCell>{!completed?'—':o.commission_cents===null?'待核对':money(o.commission_cents)}</TableCell><TableCell>{!completed?'—':o.profit_cents===null?'待核对':money(o.profit_cents)}</TableCell></TableRow>})}</TableBody></Table><div className="workspace-page-bar"><span>第 {page} / {Math.max(1,Math.ceil(data.totals.order_count/20))} 页</span><div><Button variant="outline" disabled={page===1||loading} onClick={()=>setPage(p=>p-1)}>上一页</Button><Button variant="outline" disabled={page*20>=data.totals.order_count||loading} onClick={()=>setPage(p=>p+1)}>下一页</Button></div></div></>}</DialogContent></Dialog>
+      <Dialog open={details} onOpenChange={setDetails}><DialogContent className="workspace-dialog motion-dialog"><DialogHeader><DialogTitle>筛选订单明细</DialogTitle><DialogDescription>共 {data.totals.order_count} 单，金额汇总覆盖全部筛选结果。</DialogDescription></DialogHeader>{details&&<><Feedback error={error} loading={loading} data={data}/><Table className="workspace-table"><TableHeader><TableRow>{['订单 / 下单时间','套餐 / 来源','状态','付款','退款','采购成本','代理分成','净利润'].map(s=><TableHead key={s}>{s}</TableHead>)}</TableRow></TableHeader><TableBody>{data.orders.map(o=>{const completed=o.status==='success'&&o.payment_status==='paid';return <TableRow key={o.id}><TableCell><strong>{o.id}</strong><small>{time(o.created_at)}</small></TableCell><TableCell>{o.plan_name}<small>{o.partner_name||'直营'}</small></TableCell><TableCell><Badge variant="secondary">{ORDER_LABELS[o.status as OrderStatus]}</Badge><small>{o.payment_status==='paid'?'已付款':'未付款'}{o.held?' · 待核对':''}</small></TableCell><TableCell>{money(o.paid_cents)}</TableCell><TableCell>{money(o.refund_cents)}</TableCell><TableCell>{!completed?'—':o.cost_cents===null?'待补成本':money(o.cost_cents)}</TableCell><TableCell>{!completed?'—':o.commission_cents===null?'待核对':money(o.commission_cents)}</TableCell><TableCell>{!completed?'—':o.profit_cents===null?'待核对':money(o.profit_cents)}</TableCell></TableRow>})}</TableBody></Table><div className="workspace-page-bar"><span>第 {page} / {Math.max(1,Math.ceil(data.totals.order_count/20))} 页</span><div><Button variant="outline" disabled={page===1||loading} onClick={()=>setPage(p=>p-1)}>上一页</Button><Button variant="outline" disabled={page*20>=data.totals.order_count||loading} onClick={()=>setPage(p=>p+1)}>下一页</Button><Button variant="outline" disabled={exporting} onClick={()=>void exportAll()}>导出 Excel（汇总 + 全部明细）</Button></div></div></>}</DialogContent></Dialog>
     </>}
   </WorkspacePanel>
 }

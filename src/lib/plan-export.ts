@@ -5,7 +5,7 @@ export type PlanImportRow = { id: string; productId?: string; name?: string; pri
 
 const HEADERS = ['商品编号', '产品', '套餐名称', '售价（元）', '允许购买', '仅续费', '开放代理销售', '购买说明', '默认领取说明']
 
-const styleSheets = (workbook: Workbook) => {
+export const styleSheets = (workbook: Workbook) => {
   for (const sheet of workbook.worksheets) {
     sheet.views = [{ state: 'frozen', ySplit: 1 }]
     sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: sheet.rowCount, column: sheet.columnCount } }

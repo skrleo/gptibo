@@ -53,10 +53,13 @@ export async function accountingReport(env: Env, url: URL) {
     LEFT JOIN accounting_costs c ON c.plan=o.plan WHERE ${clauses.join(' AND ')}`
   const rows = `SELECT q.*,CASE WHEN completed=0 THEN 0 WHEN held=1 THEN NULL ELSE paid_cents-refund_cents-cost_cents-commission_cents END profit_cents FROM (${source}) q`
   const db = env.INTEREST_DB
+  // Excel export fetches every matching order at once, capped to keep the
+  // response bounded; the paginated table keeps its 20-row window.
+  const exportAll = url.searchParams.get('orders') === 'all'
   const results = await db.batch([
     db.prepare(`SELECT ${sums} FROM (${rows})`).bind(...values),
     db.prepare(`SELECT plan,MAX(plan_name) plan_name,${sums} FROM (${rows}) GROUP BY plan ORDER BY plan`).bind(...values),
-    db.prepare(`SELECT * FROM (${rows}) ORDER BY created_at DESC,id DESC LIMIT 20 OFFSET ?`).bind(...values,(page-1)*20),
+    db.prepare(`SELECT * FROM (${rows}) ORDER BY created_at DESC,id DESC LIMIT ? OFFSET ?`).bind(...values, exportAll ? 5000 : 20, exportAll ? 0 : (page-1)*20),
   ]) as { results: unknown[] }[]
   return json({ totals: results[0].results[0] as AccountingReportTotals, groups: results[1].results, orders: results[2].results,
     page, asOf:Date.now(), start, end, status } as AccountingReport)
