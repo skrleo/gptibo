@@ -18,6 +18,9 @@ import { sendDuePartnerOrderEmails } from './partner-settings.ts'
 import { requireSecureTransport, secureResponse } from './security.ts'
 import { recordApiResponse, pruneSecurityAudit, sendDueSecurityAlerts } from './security-audit.ts'
 import { customDomainEntry, reconcileDomains } from './custom-domain.ts'
+import { withCronHealth } from './cron-health.ts'
+
+const run = (env: Env, task: string, job: () => Promise<unknown>) => withCronHealth(env, task, job)
 const json = (value: unknown, status = 200) => Response.json(value, {
   status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(status === 429 ? { 'Retry-After': '60' } : {}) },
 })
@@ -28,18 +31,29 @@ async function hash(value: string) {
 
 export default {
   async scheduled(event: { scheduledTime?: number }, env: Env) {
-    // Telegram's durable queue is independent of supplier reconciliation failures.
-    await retryTelegramInvitations(env).catch(() => { console.error('Telegram invitation queue temporarily unavailable') })
-    // Security digests cover the window that has just fully completed.
-    await sendDueSecurityAlerts(env).catch(() => { console.error('Security alert delivery temporarily unavailable') })
+    // Every job reports into cron_health; consecutive failures page the Feishu bot.
+    await run(env, 'telegram-queue', () => retryTelegramInvitations(env))
+    await run(env, 'security-alerts', () => sendDueSecurityAlerts(env))
     // Reminders run every minute; preserve the existing five-minute reconciliation cadence.
     if (event.scheduledTime === undefined || Math.floor(event.scheduledTime / 60_000) % 5 === 0) {
-      await Promise.all([reconcilePayments(env), reconcileRecharge(env), retryPayoutNotifications(env), reconcileInvoicePayments(env), reconcileDomains(env)])
-      await reconcileRechargeRefunds(env)
+      await Promise.all([
+        run(env, 'payments', () => reconcilePayments(env)),
+        run(env, 'recharge', () => reconcileRecharge(env)),
+        run(env, 'payout-notifications', () => retryPayoutNotifications(env)),
+        run(env, 'invoice-payments', () => reconcileInvoicePayments(env)),
+        run(env, 'domains', () => reconcileDomains(env)),
+      ])
+      await run(env, 'recharge-refunds', () => reconcileRechargeRefunds(env))
     }
-    await Promise.all([sendDueRechargeReminders(env), sendDuePartnerOrderEmails(env), reconcileGmail(env), reconcileDeliverySupplier(env), reconcileXGift(env)])
-    await pruneSecurityAudit(env).catch(() => { console.error('Security audit pruning temporarily unavailable') })
-    await checkStockAlerts(env).catch(() => { console.error('Stock alert check temporarily unavailable') })
+    await Promise.all([
+      run(env, 'recharge-reminders', () => sendDueRechargeReminders(env)),
+      run(env, 'partner-order-emails', () => sendDuePartnerOrderEmails(env)),
+      run(env, 'gmail', () => reconcileGmail(env)),
+      run(env, 'delivery-supplier', () => reconcileDeliverySupplier(env)),
+      run(env, 'xgift', () => reconcileXGift(env)),
+    ])
+    await run(env, 'security-audit-prune', () => pruneSecurityAudit(env))
+    await run(env, 'stock-alerts', () => checkStockAlerts(env))
   },
   async fetch(request: Request, env: Env): Promise<Response> {
     try {
