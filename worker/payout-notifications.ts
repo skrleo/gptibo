@@ -27,7 +27,7 @@ export function payoutNotificationsConfigured(env: Env) {
   return Boolean(env.FEISHU_APP_ID && env.FEISHU_APP_SECRET && payoutRecipient(env))
 }
 
-async function feishu(path: string, payload: unknown, token?: string) {
+export async function feishu(path: string, payload: unknown, token?: string) {
   const response = await fetch(FEISHU + path, {
     method: 'POST',
     redirect: 'manual',

@@ -10,6 +10,7 @@ import { limitApi } from './rate-limit.ts'
 import { ApiError } from './platform.ts'
 import { recordVisitor } from './visitors.ts'
 import { retryPayoutNotifications } from './payout-notifications.ts'
+import { checkStockAlerts } from './plans.ts'
 import { invoiceNotification, reconcileInvoicePayments } from './invoices.ts'
 import { sendDueRechargeReminders } from './recharge-reminders.ts'
 import { reconcileGmail } from './account_supplier/service.ts'
@@ -32,6 +33,7 @@ export default {
       await reconcileRechargeRefunds(env)
     }
     await Promise.all([sendDueRechargeReminders(env), reconcileGmail(env), reconcileDeliverySupplier(env), reconcileXGift(env)])
+    await checkStockAlerts(env).catch(() => { console.error('Stock alert check temporarily unavailable') })
   },
   async fetch(request: Request, env: Env): Promise<Response> {
     try {

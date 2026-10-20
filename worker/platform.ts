@@ -31,6 +31,8 @@ export interface Env {
   FEISHU_APP_SECRET?: string
   FEISHU_PAYOUT_RECIPIENT?: string
   FEISHU_STOCK_RECIPIENT?: string
+  /** Stock at or below this count triggers a restock alert; defaults to 5. */
+  STOCK_ALERT_THRESHOLD?: string
   PARTNER_AUTH_SECRET?: string
   EMAIL_PRODUCTS_ENABLED?: string
   DELIVERY_SUPPLIER_API_KEY?: string

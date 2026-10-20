@@ -28,6 +28,7 @@ import { invoiceRoutes } from './invoices.ts'
 import { publicAnnouncement } from './announcements.ts'
 import { rechargeReminderPreview } from './recharge-reminders.ts'
 import { adminGmailOrder, confirmGmailNotPurchased, fulfillGmail, gmailCheckoutEnabled, gmailProductsRoute, gmailSnapshot, gmailSnapshotStatement } from './account_supplier/service.ts'
+import { alertThreshold, plansImport, stockSnapshot } from './plans.ts'
 
 type Plan = { delivery_instructions: string; partner_enabled: number; id: string; product_id: string; name: string; price_cents: number; enabled: number; renewal_only: number; version: number }
 type OrderPartnerSource = { id: string; slug: string; name: string; email: string; wechat: string; qq: string }
@@ -326,6 +327,8 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
     }
   }
   if (path === '/api/admin/plans' && method === 'GET') return json({ plans: await plans(env) })
+  if (path === '/api/admin/plans/import' && method === 'POST') return await plansImport(request, env)
+  if (path === '/api/admin/stock' && method === 'GET') return json({ groups: await stockSnapshot(env), threshold: alertThreshold(env) })
   const planMatch = path.match(/^\/api\/admin\/plans\/([a-z0-9-]+)$/)
   if (planMatch && method === 'POST') {
     const data = await body(request); const note = requiredNote(data)

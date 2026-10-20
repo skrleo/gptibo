@@ -16,7 +16,7 @@ import { applyAppearance } from '@/lib/appearance'
 import { useResource } from '@/lib/use-resource'
 import { Feedback, WorkspaceBoot } from '@/components/workspace-loading'
 import { useSession } from '@/lib/use-session'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { ArrowLeft, ArrowUpRight, Check, ClipboardList, FileText, LayoutDashboard, LogOut, Mail, Package, Plug, RefreshCw, Search, ShieldCheck, Sun, Moon, MessageCircle, ChartNoAxesCombined } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { CopyButton } from '@/components/copy-button'
@@ -37,6 +37,8 @@ import { Users } from 'lucide-react'
 import { BrandMark } from '@/components/brand'
 import { SupportContactsPanel } from '@/components/support-contacts'
 import { api, errorMessage, type CatalogPlan } from '@/lib/api'
+import { downloadPlans, readPlansWorkbook } from '@/lib/plan-export'
+import { StockPanel } from './StockPanel'
 import { orderLabel, ORDER_LABELS } from '@/lib/demo-orders'
 import type { ServerOrder } from '@/lib/use-store'
 import '../App.css'
@@ -143,8 +145,23 @@ function PlanEditor({ plan, onClose, onUpdated }: { plan: CatalogPlan; onClose: 
 function PlansPage({ revision, onUpdated }: { revision: number; onUpdated: () => void }) {
   const { data, error, loading } = useResource<{ plans: CatalogPlan[] }>('/api/admin/plans', revision)
   const [edit, setEdit] = useState<CatalogPlan>()
+  const [importing, setImporting] = useState(false); const [importMsg, setImportMsg] = useState(''); const [importError, setImportError] = useState('')
+  const fileInput = useRef<HTMLInputElement>(null)
   const audit = useResource<{ rows: { id: string; target_id: string; note: string; created_at: number }[] }>('/api/admin/audit', revision)
-  return <><GmailSupplierPanel revision={revision} /><section className="admin-panel"><div className="admin-panel-title"><h2>在售套餐</h2><span>修改后同步至前台</span></div><Feedback error={error} loading={loading} data={data} />{data && <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>商品</th><th>套餐</th><th>售价</th><th>销售状态</th><th>适用范围</th><th /></tr></thead><tbody>{data.plans.map(p => <tr key={p.id}><td>{productNameForId(p.product_id)}</td><td>{p.name}</td><td className="admin-numeric">{money(p.price_cents)}<small>/ {emailProduct(p.id)?.duration ?? (p.product_id === 'chatgpt' ? '月' : '次')}</small></td><td><span className={`admin-pill ${p.enabled ? 'available' : ''}`}>{p.enabled ? '可购买' : '已暂停'}</span></td><td>{p.renewal_only ? '仅续费' : '常规服务'}</td><td><Button variant="outline" onClick={() => setEdit(p)}>编辑</Button></td></tr>)}</tbody></table></div>}<p className="admin-panel-footnote">Claude / Grok 仍为待上架商品，尚未设置可购买套餐。</p></section><section className="admin-panel"><div className="admin-panel-title"><h2>套餐修改记录</h2></div><Feedback error={audit.error} loading={audit.loading} data={audit.data} shape="compact" /><div className="admin-audit-list">{audit.data?.rows.length ? audit.data.rows.map(row => <div key={row.id}><strong>{row.target_id}</strong><span>{row.note}</span><time>{time(row.created_at)}</time></div>) : audit.data ? <p>暂无修改记录。</p> : null}</div></section>{edit && <PlanEditor plan={edit} onClose={() => setEdit(undefined)} onUpdated={onUpdated} />}</>
+  async function importFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file || importing) return
+    setImporting(true); setImportMsg(''); setImportError('')
+    try {
+      const rows = await readPlansWorkbook(file)
+      if (!rows.length) throw new Error('表格中没有商品数据。')
+      if (!window.confirm(`将导入 ${rows.length} 行商品数据，已存在的套餐会被覆盖（含售价与销售状态），全部变更保留审计记录。继续？`)) return
+      const result = await api<{ updated: number; created: number }>('/api/admin/plans/import', { plans: rows })
+      setImportMsg(`已更新 ${result.updated} 个、新增 ${result.created} 个套餐。`); onUpdated()
+    } catch (e) { setImportError(e instanceof Error ? e.message : errorMessage(e)) } finally { setImporting(false) }
+  }
+  return <><GmailSupplierPanel revision={revision} /><StockPanel revision={revision} /><section className="admin-panel"><div className="admin-panel-title"><h2>在售套餐</h2><div style={{ display: 'flex', alignItems: 'center', gap: 8 }}><span>修改后同步至前台</span><input ref={fileInput} type="file" accept=".xlsx" hidden onChange={e => void importFile(e)} /><Button variant="outline" disabled={!data || importing} onClick={() => fileInput.current?.click()}>{importing ? '导入中…' : '导入 Excel'}</Button><Button variant="outline" disabled={!data} onClick={() => data && void downloadPlans(data.plans)}>导出 Excel</Button></div></div><Feedback error={error} loading={loading} data={data} /><Feedback error={importError} />{importMsg && <p className="admin-success" role="status">{importMsg}</p>}{data && <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>商品</th><th>套餐</th><th>售价</th><th>销售状态</th><th>适用范围</th><th /></tr></thead><tbody>{data.plans.map(p => <tr key={p.id}><td>{productNameForId(p.product_id)}</td><td>{p.name}</td><td className="admin-numeric">{money(p.price_cents)}<small>/ {emailProduct(p.id)?.duration ?? (p.product_id === 'chatgpt' ? '月' : '次')}</small></td><td><span className={`admin-pill ${p.enabled ? 'available' : ''}`}>{p.enabled ? '可购买' : '已暂停'}</span></td><td>{p.renewal_only ? '仅续费' : '常规服务'}</td><td><Button variant="outline" onClick={() => setEdit(p)}>编辑</Button></td></tr>)}</tbody></table></div>}<p className="admin-panel-footnote">Claude / Grok 仍为待上架商品，尚未设置可购买套餐。导入时已存在的套餐会被覆盖，空白单元格保留现值。</p></section><section className="admin-panel"><div className="admin-panel-title"><h2>套餐修改记录</h2></div><Feedback error={audit.error} loading={audit.loading} data={audit.data} shape="compact" /><div className="admin-audit-list">{audit.data?.rows.length ? audit.data.rows.map(row => <div key={row.id}><strong>{row.target_id}</strong><span>{row.note}</span><time>{time(row.created_at)}</time></div>) : audit.data ? <p>暂无修改记录。</p> : null}</div></section>{edit && <PlanEditor plan={edit} onClose={() => setEdit(undefined)} onUpdated={onUpdated} />}</>
 }
 function InterestPage({ revision }: { revision: number }) {
   const [page, setPage] = useState(1)
