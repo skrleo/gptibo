@@ -1,8 +1,18 @@
 import './payment-method-choices.css'
 import { Button } from '@/components/ui/button'
+import { Check, CreditCard } from 'lucide-react'
 import { PaymentLogo } from './payment-logo'
 
 export type PaymentMethodOption = { method: string; name: string; feeBps?: number }
+
+export function DemoPaymentMethod({ methods = [] }: { methods?: PaymentMethodOption[] }) {
+  const method = methods.length === 1 ? methods[0] : undefined
+  return <div className="payment-method">
+    <div className="payment-method-logo">{method ? <PaymentLogo method={method.method} /> : <CreditCard size={20} strokeWidth={1.6} />}</div>
+    <div><strong>{method?.name ?? '模拟付款'}</strong><p>{method ? '测试模式 · 不发起真实收款' : '付款流程联调'}</p></div>
+    <Check size={17} />
+  </div>
+}
 
 export function PaymentMethodSelector({ methods, value, busy, onChange }: { methods: PaymentMethodOption[]; value?: string; busy: boolean; onChange: (method: string) => void }) {
   return <fieldset className="purchase-payment-methods" disabled={busy}>

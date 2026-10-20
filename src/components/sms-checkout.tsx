@@ -1,13 +1,14 @@
 import { AsyncButton, PaymentConfirmed, RequestNotice } from './payment-feedback'
 import { useState } from 'react'
-import { ArrowRight, Check, LoaderCircle, Phone, RotateCcw, Search, TriangleAlert, X } from 'lucide-react'
+import { ArrowRight, LoaderCircle, Phone, RotateCcw, Search, TriangleAlert, X } from 'lucide-react'
 import { CopyButton } from './copy-button'
 import { Button } from '@/components/ui/button'
 import { SuccessMark } from './brand'
 import type { CheckoutProps } from './checkout'
 import { orderLabel, type OrderAction } from '@/lib/demo-orders'
+import { DemoPaymentMethod } from './payment-method-choices'
 
-export function SmsCheckout({ order, onOpenChange, onAction, onOrders, busy, pendingAction, error }: CheckoutProps) {
+export function SmsCheckout({ order, onOpenChange, onAction, onOrders, busy, pendingAction, error, paymentMethods }: CheckoutProps) {
   const [outcome, setOutcome] = useState('success')
   const [optionsOpen, setOptionsOpen] = useState(false)
   if (!order) return null
@@ -18,7 +19,7 @@ export function SmsCheckout({ order, onOpenChange, onAction, onOrders, busy, pen
     {error && <p role="alert" className="copy-error">{error}</p>}
     {order.refundHold || (order.refundedCents ?? 0) >= Math.round(order.price * 100) ? <div className="order-service-paused">{order.refundHold ? '售后申请正在处理中，服务暂时暂停。' : '本订单已全额退款。'}<br />可以在下方查看售后进度。</div> : <fieldset disabled={busy} aria-busy={busy} className="checkout-body" style={{ minWidth: 0 }}>
       {order.status === 'pending' && <>
-        <div className="payment-method"><div className="alipay-mark">支</div><div><strong>支付宝</strong><p>付款流程联调</p></div><Check size={17} /></div>
+        <DemoPaymentMethod methods={paymentMethods} />
         <p className="sms-description">付款步骤通过后获取手机号，再查询接码结果。</p>
         <div className="total-row"><span>本次合计</span><strong>¥{order.price.toFixed(2)}</strong></div><AsyncButton className="primary-action" loading={pendingAction === 'pay'} pendingLabel="正在校验付款步骤" onClick={() => action('pay')}>跳过付款，继续测试 <ArrowRight /></AsyncButton><button className="text-button quiet centered" onClick={() => action('cancel')}>{pendingAction === 'cancel' ? '正在关闭订单…' : '暂不购买，关闭此订单'}</button>
       </>}

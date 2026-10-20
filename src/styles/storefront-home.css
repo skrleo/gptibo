@@ -76,6 +76,28 @@
   .store-product:hover .store-mail-art { transform:translateY(-3px) scale(1.05); }
 }
 .store-product:focus-within .store-mail-art { transform:translateY(-3px) scale(1.05); }
+.scene-muse { background:radial-gradient(ellipse at 45% 55%,#dbe9fd 0%,#ebf2fe 45%,#f6f9fe 80%); }
+.muse-card { position:absolute; left:50%; top:47%; width:158px; height:100px; transform:translate(-50%,-50%) rotate(-6deg); animation:muse-card-float 6s ease-in-out infinite; }
+.muse-card-face { position:absolute; inset:0; border-radius:13px; border:1px solid #ffffffa6; background:linear-gradient(135deg,#e9f2fe,#c9dcf9); color:#1c4d92; box-shadow:0 9px 20px #14336b18,inset 0 1px 0 #ffffffa0; overflow:hidden; transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s ease; }
+.muse-card-brand { position:absolute; top:12px; left:16px; display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; opacity:.88; }
+.muse-card-brand img { display:block; width:16px; height:16px; object-fit:contain; }
+.muse-card-name { position:absolute; top:29px; left:16px; font-size:22px; font-weight:600; letter-spacing:-.6px; line-height:1.25; }
+.muse-card-price { position:absolute; bottom:11px; right:15px; display:flex; align-items:baseline; gap:4px; font-size:23px; font-weight:600; letter-spacing:-.5px; font-variant-numeric:tabular-nums; line-height:1.1; }
+.muse-card-price small { font-size:11px; font-weight:400; letter-spacing:0; }
+.muse-card-sheen { position:absolute; inset:-60% -30%; z-index:1; pointer-events:none; background:linear-gradient(115deg,transparent 37%,#ffffff0d 46%,#ffffff38 49%,#ffffff05 54%,transparent 62%); transform:translateX(-65%); animation:muse-card-sheen 9s ease-in-out infinite; }
+.muse-spark { position:absolute; color:#4a8df0; font-size:21px; animation:gemini-twinkle 4s ease-in-out infinite; }
+.muse-spark.spark-one { left:14%; bottom:24%; }
+.muse-spark.spark-two { right:16%; top:18%; font-size:14px; animation-delay:-2s; }
+@media(hover:hover) and (pointer:fine) {
+  .store-product:hover .muse-card-face { transform:translateY(-2px) scale(1.05); box-shadow:0 14px 28px #14336b2c,inset 0 1px 0 #ffffffa0; }
+}
+.store-product:focus-within .muse-card-face { transform:translateY(-2px) scale(1.05); }
+.dark .scene-muse { background:radial-gradient(ellipse at 45% 55%,#233a57,#1a2331 70%); }
+.dark .muse-card-face { border-color:#ffffff24; background:linear-gradient(135deg,#41648f,#2a4162); color:#eaf3ff; box-shadow:0 9px 20px #00000038,inset 0 1px 0 #ffffff16; }
+.dark .store-product:hover .muse-card-face { box-shadow:0 14px 28px #00000060,inset 0 1px 0 #ffffff24; }
+.dark .muse-spark { color:#7fb0f7; }
+@keyframes muse-card-float { 0%,100% { transform:translate(-50%,-50%) rotate(-6deg); } 50% { transform:translate(-50%,-56%) rotate(-2.5deg); } }
+@keyframes muse-card-sheen { 0%,20% { transform:translateX(-65%); opacity:0; } 26% { opacity:1; } 52% { transform:translateX(65%); opacity:1; } 58%,100% { transform:translateX(65%); opacity:0; } }
 .store-compact-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin-top:24px; }
 .store-compact-grid.store-product-group { margin-top:0; }
 .store-product-group + .store-product-group { margin-top:24px; }

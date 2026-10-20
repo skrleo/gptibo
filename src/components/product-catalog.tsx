@@ -1,7 +1,7 @@
 import { useStorefrontI18n } from '@/lib/storefront-i18n'
 import { normalizeProductOrder } from '../../shared/product-order'
 import { XPremiumScene } from './x-premium'
-import { MembershipScene } from './membership-scene'
+import { MembershipScene, MuseScene } from './membership-scene'
 import { EMAIL_PRODUCTS } from '../../shared/email-products'
 import { useState, type MouseEvent, type ReactNode } from 'react'
 import { ChevronRight, CircleHelp, Clock3, LayoutGrid, Mail, ReceiptText, Search, Sparkles, Terminal } from 'lucide-react'
@@ -44,6 +44,7 @@ export function ProductCatalog({ onHelp, onOrders, onNavigate, offers, catalogRe
   const startingPrice = catalogStartingPrice(offers)
   const matches = (group: string, text: string) => (category === 'all' || category === group) && text.toLowerCase().includes(query.trim().toLowerCase())
   const chatgpt = matches('ai', 'ChatGPT Plus Pro')
+  const muse = matches('ai', 'Muse AI 人工交付')
   const gmail = matches('mail', 'Gmail 邮箱账号 email accounts 2FA')
   const upcoming = UPCOMING_PRODUCTS.filter(p => matches('ai', p.name))
   const memberships = Object.entries(EMAIL_PRODUCTS).filter(([, p]) => p.productId !== 'gmail' && matches(p.productId === 'gemini' ? 'ai' : 'learning', p.name + (p.productId === 'duolingo' ? ' Duolingo' : '')))
@@ -52,12 +53,14 @@ export function ProductCatalog({ onHelp, onOrders, onNavigate, offers, catalogRe
   const xAvailable = xOffers.some(p => p.enabled)
   const xOffer = [...xOffers].sort((a, b) => Number(Boolean(b.enabled)) - Number(Boolean(a.enabled)) || a.price_cents - b.price_cents)[0]
   const sms = matches('tool', 'Codex 接码 SMS verification')
+  const museOffer = offers.find(p => p.id === 'muse-ai-once')
   const navigate = (event: MouseEvent<HTMLAnchorElement>, page: string) => {
     if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
     event.preventDefault(); onNavigate(page)
   }
   const cards: { id: string; compact?: boolean; node: ReactNode }[] = [
     { id: "chatgpt", node: chatgpt && <article className="store-product"><div className="store-product-heading"><h3>ChatGPT</h3>{offers.length > 0 && !plans.some(p => p.enabled) && <span>{t('暂停售卖')}</span>}</div><p className="store-spec">{t('自有账号充值 · Plus / Pro')}</p><SubscriptionDeck plans={plans} /><div className="store-product-bottom"><span className="store-starting-price">{startingPrice === null ? <small>{t(offers.length ? '价格暂不可用' : '价格加载中')}</small> : <>¥{formatCatalogPrice(startingPrice)}<small>{t(' 起')}</small></>}</span><a className="store-action" href={storefrontHref('product/chatgpt')} onClick={e => navigate(e, 'product/chatgpt')}>{t('选择套餐')}</a></div></article> },
+    { id: 'muse-ai', node: muse && <article className="store-product muse-product"><div className="store-product-heading"><h3>Muse AI</h3><span>{t(museOffer && !museOffer.enabled ? '暂停售卖' : '单个商品')}</span></div><p className="store-spec">{t('按个购买 · 人工交付')}</p><MuseScene price={museOffer ? museOffer.price_cents / 100 : null} /><div className="store-product-bottom"><span className="store-starting-price">{museOffer ? <>¥{formatCatalogPrice(museOffer.price_cents / 100)}<small>{t(' / 个')}</small></> : <small>{t('价格加载中')}</small>}</span><a className="store-action" href={storefrontHref('product/muse-ai')} onClick={e => navigate(e, 'product/muse-ai')}>{t(museOffer?.enabled ? '查看商品' : '查看详情')}</a></div></article> },
     ...memberships.map(([id, product]) => { const offer = offers.find(p => p.id === id); return { id: product.productId, node: <article key={id} className="store-product membership-product"><div className="store-product-heading"><h3>{product.productId === 'gemini' ? 'Gemini Pro' : t('多邻国')}</h3><span>{t(product.duration + '会员')}</span></div><p className="store-spec">{t(product.label)} · {t('邮件交付')}</p><MembershipScene productId={product.productId as 'gemini' | 'duolingo'} /><div className="store-product-bottom"><span className="store-starting-price">{offer ? <>¥{formatCatalogPrice(offer.price_cents / 100)}<small> / {t(product.duration)}</small></> : <small>{t(offers.length ? '暂未开放' : '价格加载中')}</small>}</span><a className="store-action" href={storefrontHref('product/' + product.productId)} onClick={e => navigate(e, 'product/' + product.productId)}>{t(offer?.enabled ? '查看商品' : '查看详情')}</a></div></article> } }),
     { id: "x-premium", node: xgift && <article className="store-product membership-product x-product"><div className="store-product-heading"><h3>X Premium</h3><span>{t(offers.length > 0 && !xAvailable ? '暂停售卖' : '会员订阅')}</span></div><p className="store-spec">{t('3 / 6 个月 · 你的账号，继续精彩')}</p><XPremiumScene /><div className="store-product-bottom"><span className="store-starting-price">{xOffer ? <>¥{formatCatalogPrice(xOffer.price_cents / 100)}<small>{t(' 起')}</small></> : <small>{t('价格加载中')}</small>}</span><a className="store-action" href={storefrontHref('product/x-premium')} onClick={e => navigate(e, 'product/x-premium')}>{t(xAvailable ? '选择套餐' : '查看详情')}</a></div></article> },
     { id: "gmail", node: gmail && <article className="store-product"><div className="store-product-heading"><h3>{t('Gmail 账号')}</h3><span>{t('美国个人白号')}</span></div><p className="store-spec">{t('带 2FA · 账号资料自动邮件交付')}</p><div className="store-mail-art" aria-hidden="true"><div className="store-envelope" /><span className="store-envelope-label"><Mail size={16} />Gmail</span></div><div className="store-product-bottom"><span className="store-starting-price">{offers.find(p => p.id === 'gmail-account') ? <>¥{formatCatalogPrice(offers.find(p => p.id === 'gmail-account')!.price_cents / 100)}<small>{t(' / 个')}</small></> : <small>{t('价格加载中')}</small>}</span><a className="store-action" href={storefrontHref('product/gmail')} onClick={e => navigate(e, 'product/gmail')}>{t(offers.some(p => p.id === 'gmail-account' && p.enabled) ? '查看商品' : '查看详情')}</a></div></article> },

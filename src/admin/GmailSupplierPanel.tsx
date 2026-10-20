@@ -4,21 +4,27 @@ import { Input } from '@/components/ui/input'
 import { Feedback } from '@/components/workspace-loading'
 import { api, errorMessage } from '@/lib/api'
 import { useResource } from '@/lib/use-resource'
+import { CircleDollarSign, KeyRound, PackageCheck, RefreshCcw, ShieldAlert, ShoppingCart } from 'lucide-react'
 
 type Config = { configured: boolean; checkoutEnabled: boolean; goodsId: number | null; maxCostCents: number | null }
 type Goods = { goodsId: number; name: string; priceCents: number; stock: number; enabled: boolean }
 export function GmailSupplierPanel({ revision }: { revision: number }) {
   const config = useResource<Config>('/api/admin/account_supplier', revision)
-  return <section className="admin-panel"><div className="admin-panel-title"><h2>Gmail 自动采购</h2><span>付款确认后采购 · 邮件交付</span></div>
+  const ready = Boolean(config.data?.configured && config.data.checkoutEnabled)
+  return <section className="admin-panel gmail-supplier-panel"><div className="admin-panel-title gmail-supplier-heading"><div><h2>Gmail 自动采购</h2><p>付款确认后自动下单，通过邮件完成交付。</p></div>{config.data && <span className={`connection-state ${ready ? 'is-ready' : ''}`}>{ready ? '自动采购运行中' : config.data.configured ? '自动采购已关闭' : '需要配置'}</span>}</div>
     <Feedback error={config.error} loading={config.loading} data={config.data} shape="compact" />
-    {config.data && <p className="admin-subtle">接口凭据：{config.data.configured ? '已配置' : '未配置'} · 自动购买：{config.data.checkoutEnabled ? '已启用' : '未启用'} · 成本上限：{config.data.maxCostCents !== null ? `¥${(config.data.maxCostCents / 100).toFixed(2)}` : '未设置'}</p>}
+    {config.data && <div className="gmail-supplier-overview">
+      <div className={config.data.configured ? 'is-ready' : ''}><KeyRound size={18} /><div><span>接口凭据</span><strong>{config.data.configured ? '已连接' : '未配置'}</strong><small>{config.data.configured ? '供应商接口可用' : '在服务器环境中设置'}</small></div></div>
+      <div className={config.data.checkoutEnabled ? 'is-ready' : ''}><ShoppingCart size={18} /><div><span>自动采购</span><strong>{config.data.checkoutEnabled ? '已启用' : '未启用'}</strong><small>{config.data.checkoutEnabled ? '付款后自动创建采购单' : '新订单不会自动采购'}</small></div></div>
+      <div className={config.data.maxCostCents !== null ? 'is-ready' : ''}><CircleDollarSign size={18} /><div><span>单笔成本上限</span><strong>{config.data.maxCostCents !== null ? `¥${(config.data.maxCostCents / 100).toFixed(2)}` : '未设置'}</strong><small>{config.data.maxCostCents !== null ? '超过上限时暂停采购' : '建议配置风控上限'}</small></div></div>
+    </div>}
     {config.data?.configured && config.data.goodsId && <SupplierGoods id={config.data.goodsId} revision={revision} />}
-    <p className="admin-panel-footnote">售价与代理拿货价在套餐及代理管理中调整。采购超时只查询原采购单，不重复下单；进价超过成本上限或库存不足时暂停新购买。</p>
+    <div className="gmail-supplier-rules"><p><RefreshCcw size={15} /><span><strong>避免重复采购</strong>采购超时只查询原采购单，不重复下单。</span></p><p><ShieldAlert size={15} /><span><strong>自动风控</strong>进价超过成本上限或库存不足时暂停新购买。</span></p><small>售价与代理拿货价在“商品与套餐”和“代理管理”中调整。</small></div>
   </section>
 }
 function SupplierGoods({ id, revision }: { id: number; revision: number }) {
   const product = useResource<Goods>(`/api/admin/account_supplier/goods/${id}`, revision)
-  return <><Feedback error={product.error} loading={product.loading} data={product.data} shape="compact" />{product.data && <p>{product.data.goodsId} · {product.data.name}<br />当前进价 ¥{(product.data.priceCents / 100).toFixed(2)} · 库存 {product.data.stock} · {product.data.enabled ? '供应商在售' : '供应商已停售'}</p>}</>
+  return <><Feedback error={product.error} loading={product.loading} data={product.data} shape="compact" />{product.data && <div className="gmail-supplier-product"><PackageCheck size={18} /><div><span>当前采购商品 · #{product.data.goodsId}</span><strong>{product.data.name}</strong></div><dl><div><dt>当前进价</dt><dd>¥{(product.data.priceCents / 100).toFixed(2)}</dd></div><div><dt>供应库存</dt><dd>{product.data.stock}</dd></div></dl><span className={`connection-state ${product.data.enabled ? 'is-ready' : ''}`}>{product.data.enabled ? '供应商在售' : '供应商已停售'}</span></div>}</>
 }
 type Purchase = { state: string; goodsId: number; supplierOrder: string | null; actualCostCents: number | null; maxCostCents: number; updatedAt: number }
 export function GmailOrderPanel({ id, revision, orderVersion, onSaved }: { id: string; revision: number; orderVersion: number; onSaved: () => void }) {

@@ -11,15 +11,16 @@ import { OrderRecord } from './order-record'
 import { LiveCheckout } from './live-checkout'
 import { ManualCheckout } from './manual-checkout'
 import type { ServerOrder } from '@/lib/use-store'
+import { DemoPaymentMethod, type PaymentMethodOption } from './payment-method-choices'
 
-export type CheckoutProps = { testingEnabled?: boolean; order: ServerOrder | undefined; open: boolean; onOpenChange: (open: boolean) => void; onAction: (id: string, action: OrderAction) => void; onOrders: () => void; busy?: boolean; pendingAction?: OrderAction; error?: string; onUpdated?: () => void; onOrderUpdated?: (order: ServerOrder) => void; refreshTarget?: HTMLElement | null; refreshDisabled?: boolean }
-export function Checkout({ order, open, onOpenChange, onAction, onOrders, busy, pendingAction, error, onUpdated, testingEnabled, onOrderUpdated, refreshTarget, refreshDisabled }: CheckoutProps) {
+export type CheckoutProps = { testingEnabled?: boolean; paymentMethods?: PaymentMethodOption[]; order: ServerOrder | undefined; open: boolean; onOpenChange: (open: boolean) => void; onAction: (id: string, action: OrderAction) => void; onOrders: () => void; busy?: boolean; pendingAction?: OrderAction; error?: string; onUpdated?: () => void; onOrderUpdated?: (order: ServerOrder) => void; refreshTarget?: HTMLElement | null; refreshDisabled?: boolean }
+export function Checkout({ order, open, onOpenChange, onAction, onOrders, busy, pendingAction, error, onUpdated, testingEnabled, paymentMethods, onOrderUpdated, refreshTarget, refreshDisabled }: CheckoutProps) {
   const [credential, setCredential] = useState('')
   const [outcome, setOutcome] = useState<'success' | 'failed'>('success')
   if (order?.mode === 'live' && (order.manualFulfillment || isXGiftPlan(order.plan))) return <ManualCheckout key={order.id} order={order} open={open} onUpdated={onUpdated} onOrderUpdated={onOrderUpdated} onOrders={onOrders} onOpenChange={onOpenChange} onAction={onAction} refreshTarget={refreshTarget} refreshDisabled={refreshDisabled} />
   if (order?.mode === 'live' && order.fulfillment) return <LiveCheckout key={order.id} order={order} open={open} onUpdated={onUpdated} onOrderUpdated={onOrderUpdated} onOrders={onOrders} error={error} refreshTarget={refreshTarget} refreshDisabled={refreshDisabled} />
   if (order && (order.mode !== 'demo' || !testingEnabled)) return <OrderRecord order={order} open={open} onOpenChange={onOpenChange} onAction={onAction} onOrders={onOrders} error={error} />
-  if (order?.plan === 'codex-sms-once') return <SmsCheckout key={order.id} order={order} open={open} onOpenChange={onOpenChange} onAction={onAction} onOrders={onOrders} busy={busy} pendingAction={pendingAction} error={error} onUpdated={onUpdated} />
+  if (order?.plan === 'codex-sms-once') return <SmsCheckout key={order.id} order={order} open={open} onOpenChange={onOpenChange} onAction={onAction} onOrders={onOrders} busy={busy} pendingAction={pendingAction} error={error} onUpdated={onUpdated} paymentMethods={paymentMethods} />
   if (!order) return null
   if (order.redemptionBlocked) return <div className="order-service-paused">本订单已由客服处理，无法再次兑换。<br />如有疑问，请联系支持。</div>
   const plan = ORDER_PLANS.find(p => p.id === order.plan)!
@@ -30,7 +31,7 @@ export function Checkout({ order, open, onOpenChange, onAction, onOrders, busy, 
       {error && <p role="alert" className="copy-error">{error}</p>}
       {order.refundHold || (order.refundedCents ?? 0) >= Math.round(order.price * 100) ? <div className="order-service-paused">{order.refundHold ? '售后申请正在处理中，服务暂时暂停。' : '本订单已全额退款。'}<br />可以在下方查看售后进度。</div> : <fieldset disabled={busy} aria-busy={busy} className="checkout-body" style={{ minWidth: 0 }}>
         {order.status === 'pending' && <>
-          <div className="payment-method"><div className="alipay-mark">支</div><div><strong>支付宝</strong><p>付款流程联调</p></div><Check size={17} /></div>
+          <DemoPaymentMethod methods={paymentMethods} />
           <div className="payment-preview"><CreditCard size={28} strokeWidth={1.3} /><p>支付流程测试</p><span>不发起收款，可继续检查后续步骤</span></div>
           <div className="total-row"><span>本次合计</span><strong>¥{order.price.toFixed(2)}</strong></div>
           <AsyncButton className="primary-action" loading={pendingAction === 'pay'} pendingLabel="正在校验付款步骤" onClick={() => action('pay')}>跳过付款，继续测试 <ArrowRight /></AsyncButton>

@@ -34,6 +34,7 @@ import { profitLabel } from './order-labels'
 import { date, money, payoutLabel, usePartnerData, type Dashboard, type PayoutAccount } from './model'
 import { PayoutAccountDialog } from './PayoutAccountDialog'
 import { partnerStorefrontPath } from '../../shared/partner-link.ts'
+import { isManualFulfillmentPlan, manualProduct } from '../../shared/manual-products.ts'
 import '../App.css'
 import '../admin/admin.css'
 import '../styles/motion.css'
@@ -43,7 +44,7 @@ import './workspace.css'
 type Session = { authenticated: boolean; mailReady: boolean }
 type PartnerFulfillment = { rechargeStatus?: string | null; failureCode?: string | null; errorCategory?: string | null; progressStage?: string | null; progressUpdatedAt?: number | null; attemptNo?: number | null; canSubmit?: boolean; message?: string | null; failureReason?: string | null; accountEmailMasked?: string | null; finishedAt?: number | null; recoveryAction?: string | null }
 type PartnerOrder = { fulfillment?: PartnerFulfillment | null; updated_at?: number; serviceMessage?: string; delivery?: { status: string; sentAt?: number | null }; rechargeReference?: { order_id?: string; redemption_id?: string }; id: string; customer_email: string | null; plan: string; plan_name: string; price_cents: number; cost_cents: number; profit_cents: number; refunded_cents: number; platform_payment_status?: string | null; platform_refunded_cents?: number | null; platform_checked_at?: number | null; refund_hold: number; mode: string; status: string; recharge_status?: string | null; payment_status: string; payout_status: string | null; created_at: number }
-const orderProductName = (o: PartnerOrder) => emailProduct(o.plan) || o.plan === 'codex-sms-once'
+const orderProductName = (o: PartnerOrder) => emailProduct(o.plan) || o.plan === 'codex-sms-once' || isManualFulfillmentPlan(o.plan)
   ? productNameForPlan(o.plan)
   : (isXGiftPlan(o.plan) ? 'X ' : 'ChatGPT ') + o.plan_name
 const refundedAmount = (o: PartnerOrder) => Math.max(o.refunded_cents ?? 0, o.platform_refunded_cents ?? 0)
@@ -96,8 +97,9 @@ export function PartnerOrderDetailDialog({
   const statusText = refundOrderLabel(order) ?? (order.status !== 'success' && order.recharge_status === 'unknown' ? '提交待确认' : null) ?? labels[order.status] ?? order.status
   const isCodex = order.plan === 'codex-sms-once'
   const isX = isXGiftPlan(order.plan)
+  const isManual = isManualFulfillmentPlan(order.plan)
   const productName = orderProductName(order)
-  const productDesc = emailProduct(order.plan) ? '人工处理 · 邮件交付' : isCodex
+  const productDesc = emailProduct(order.plan) ? '人工处理 · 邮件交付' : isManual ? '单个商品 · 人工交付' : isCodex
     ? '单次短信接码验证'
     : isX ? 'X Premium 订阅 · 无需账号密码'
     : order.plan_name.includes('20')
@@ -135,7 +137,7 @@ export function PartnerOrderDetailDialog({
 
         <div className="partner-order-product-card">
           <div className="partner-order-product-left">
-            <ProductMark small productId={emailProduct(order.plan)?.productId ?? (isCodex ? 'codex-sms' : isX ? 'x-premium' : 'chatgpt')} />
+            <ProductMark small productId={emailProduct(order.plan)?.productId ?? manualProduct(order.plan)?.productId ?? (isCodex ? 'codex-sms' : isX ? 'x-premium' : 'chatgpt')} />
             <div>
               <h3 className="partner-order-product-title">{productName}</h3>
               <p className="partner-order-product-desc">{productDesc}</p>
