@@ -4,7 +4,8 @@ import { generateKeyPairSync } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { customerFixture } from './customer-fixture.ts'
-import { call, mappings, DeliverySupplierReceiptRejected, usdMicros, validateProduct } from '../worker/delivery_supplier/client.ts'
+import { apiBase, call, mappings, products, DeliverySupplierReceiptRejected, usdMicros, validateProduct } from '../worker/delivery_supplier/client.ts'
+import type { Env } from '../worker/platform.ts'
 import { fulfillDeliverySupplier, reconcileDeliverySupplier } from '../worker/delivery_supplier/service.ts'
 import { applyPaymentResult, findPayment } from '../worker/payments/service.ts'
 
@@ -308,4 +309,18 @@ test('only explicit invalid receipt without an order identity is a definite reje
   }
   response({ error_code: 'INVALID_IDEMPOTENCY_KEY', order_id: 'API_PAID', order_status: 'pending' }, 400)
   assert.equal((await call<{ order_id: string }>(s.env, '/order', 'legacy/receipt', '{}')).order_id, 'API_PAID')
+})
+
+test('supplier API base accepts a configured https host and rejects invalid ones', async t => {
+  const s = await setup(t)
+  assert.equal(apiBase({} as Env), 'https://delivery.example.invalid/api/v1')
+  assert.equal(apiBase({ DELIVERY_SUPPLIER_API_BASE: 'https://supplier.real.example/api/v1/' } as Env), 'https://supplier.real.example/api/v1')
+  for (const bad of ['http://supplier.real.example/api/v1', 'https://supplier.real.example/other', 'https://user:pass@supplier.real.example/api/v1', 'https://supplier.real.example/api/v1?key=1', 'not-a-url'])
+    assert.throws(() => apiBase({ DELIVERY_SUPPLIER_API_BASE: bad } as Env), /自动发货供应商地址配置无效/)
+  // A configured base is honored end to end.
+  const seen: string[] = []
+  t.mock.method(globalThis, 'fetch', async (url: string | URL) => { seen.push(String(url)); return Response.json({ services: [] }) })
+  Object.assign(s.env, { DELIVERY_SUPPLIER_API_BASE: 'https://supplier.real.example/api/v1' })
+  await products(s.env)
+  assert.deepEqual(seen, ['https://supplier.real.example/api/v1/products'])
 })

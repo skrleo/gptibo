@@ -28,10 +28,17 @@ export function purchaseReceipt(id: string) {
 export class DeliverySupplierReceiptRejected extends ApiError {
   constructor() { super('供应商拒绝了采购编号，采购未发生，请核对后恢复。', 409) }
 }
+export function apiBase(env: Env) {
+  let base: URL
+  try { base = new URL(env.DELIVERY_SUPPLIER_API_BASE ?? 'https://delivery.example.invalid/api/v1') } catch { throw new ApiError('自动发货供应商地址配置无效。', 503) }
+  if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash || base.pathname.replace(/\/$/, '') !== '/api/v1') throw new ApiError('自动发货供应商地址配置无效。', 503)
+  return base.origin + '/api/v1'
+}
 export async function call<T>(env: Env, path: string, receipt?: string, payload?: string): Promise<T> {
   if (!env.DELIVERY_SUPPLIER_API_KEY) throw new ApiError('自动发货供应商尚未配置。', 503)
+  const base = apiBase(env)
   try {
-    const response = await fetch('https://delivery.example.invalid/api/v1' + path, {
+    const response = await fetch(base + path, {
       method: payload ? 'POST' : 'GET', redirect: 'manual',
       headers: { 'X-API-Key': env.DELIVERY_SUPPLIER_API_KEY, Accept: 'application/json', ...(payload ? { 'Content-Type': 'application/json', 'Idempotency-Key': receipt! } : {}) },
       body: payload, signal: AbortSignal.timeout(15000),
