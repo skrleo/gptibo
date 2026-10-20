@@ -2,10 +2,11 @@ import type { CatalogPlan } from './api.ts'
 
 const subscriptionTiers = [{ id: 'plus', name: 'Plus' }, { id: 'pro-5x', name: 'Pro 5×' }, { id: 'pro-20x', name: 'Pro 10×' }, { id: 'pro-25x', name: 'Pro 25×' }]
 export function catalogSubscriptionPlans(offers: CatalogPlan[]) {
+  const positions = new Map(offers.map((offer, index) => [offer.id, index]))
   return subscriptionTiers.map(tier => {
     const offer = offers.find(o => o.product_id === 'chatgpt' && o.id === tier.id)
     return { ...tier, price: offer && Number.isSafeInteger(offer.price_cents) && offer.price_cents >= 0 ? offer.price_cents / 100 : null, enabled: Boolean(offer?.enabled) }
-  })
+  }).sort((a, b) => (positions.get(a.id) ?? Number.MAX_SAFE_INTEGER) - (positions.get(b.id) ?? Number.MAX_SAFE_INTEGER))
 }
 export function catalogStartingPrice(offers: CatalogPlan[]) {
   const plans = catalogSubscriptionPlans(offers)
