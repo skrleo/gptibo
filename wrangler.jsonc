@@ -18,7 +18,8 @@
     "PAYMENT_TEST_ENABLED": "false",
     "RECHARGE_CHECKOUT_ENABLED": "false",
     "ACCOUNT_SUPPLIER_CHECKOUT_ENABLED": "false",
-    "DELIVERY_SUPPLIER_CHECKOUT_ENABLED": "false"
+    "DELIVERY_SUPPLIER_CHECKOUT_ENABLED": "false",
+    "CUSTOM_DOMAINS_ENABLED": "false"
   },
   "main": "worker/index.ts",
   "d1_databases": [

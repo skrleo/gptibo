@@ -16,6 +16,7 @@ import { sendDueRechargeReminders } from './recharge-reminders.ts'
 import { reconcileGmail } from './account_supplier/service.ts'
 import { requireSecureTransport, secureResponse } from './security.ts'
 import { recordApiResponse, pruneSecurityAudit, sendDueSecurityAlerts } from './security-audit.ts'
+import { customDomainEntry, reconcileDomains } from './custom-domain.ts'
 const json = (value: unknown, status = 200) => Response.json(value, {
   status, headers: { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', ...(status === 429 ? { 'Retry-After': '60' } : {}) },
 })
@@ -32,7 +33,7 @@ export default {
     await sendDueSecurityAlerts(env).catch(() => { console.error('Security alert delivery temporarily unavailable') })
     // Reminders run every minute; preserve the existing five-minute reconciliation cadence.
     if (event.scheduledTime === undefined || Math.floor(event.scheduledTime / 60_000) % 5 === 0) {
-      await Promise.all([reconcilePayments(env), reconcileRecharge(env), retryPayoutNotifications(env), reconcileInvoicePayments(env)])
+      await Promise.all([reconcilePayments(env), reconcileRecharge(env), retryPayoutNotifications(env), reconcileInvoicePayments(env), reconcileDomains(env)])
       await reconcileRechargeRefunds(env)
     }
     await Promise.all([sendDueRechargeReminders(env), reconcileGmail(env), reconcileDeliverySupplier(env), reconcileXGift(env)])
@@ -68,7 +69,11 @@ async function route(request: Request, env: Env): Promise<Response> {
       try { return await recordVisitor(request, env) }
       catch (caught) { return error(caught instanceof ApiError ? caught.message : '统计暂不可用。', caught instanceof ApiError ? caught.status : 503) }
     }
-    if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request)
+    if (!url.pathname.startsWith('/api/')) {
+      const entry = await customDomainEntry(env, url)
+      if (entry) return entry
+      return env.ASSETS.fetch(request)
+    }
     if (url.pathname.startsWith('/api/admin/') || url.pathname.startsWith('/api/partner/') || url.pathname.startsWith('/api/orders') || url.pathname === '/api/catalog') return commerce(request, env)
     if (!['/api/interest', '/api/interest/cancel'].includes(url.pathname)) return error('未找到接口。', 404)
     if (request.method !== 'POST') return error('请通过登记表单提交。', 405)

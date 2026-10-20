@@ -33,6 +33,15 @@ export interface Env {
   FEISHU_STOCK_RECIPIENT?: string
   /** Stock at or below this count triggers a restock alert; defaults to 5. */
   STOCK_ALERT_THRESHOLD?: string
+  /** Custom domains for partner storefronts (Cloudflare for SaaS). */
+  CUSTOM_DOMAINS_ENABLED?: string
+  CUSTOM_DOMAINS_ZONE?: string
+  CUSTOM_DOMAINS_TARGET?: string
+  CUSTOM_DOMAINS_LIMIT?: string
+  /** Platform hostnames that must never be treated as a bound shop domain. */
+  CUSTOM_DOMAINS_SITE_HOSTS?: string
+  CF_SAAS_ZONE_ID?: string
+  CF_SAAS_API_TOKEN?: string
   PARTNER_AUTH_SECRET?: string
   EMAIL_PRODUCTS_ENABLED?: string
   DELIVERY_SUPPLIER_API_BASE?: string

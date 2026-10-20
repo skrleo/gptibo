@@ -61,3 +61,10 @@ DELIVERY_SUPPLIER_API_KEY= # Configure locally; never commit a real value.
 DELIVERY_SUPPLIER_API_BASE= # Optional; defaults to the sanitized example endpoint.
 DELIVERY_SUPPLIER_CHECKOUT_ENABLED=false
 DELIVERY_SUPPLIER_CNY_PER_USD= # Configure locally; never commit a real value.
+
+# 自定义域名（Cloudflare for SaaS）；token 用 wrangler secret put CF_SAAS_API_TOKEN 配置
+CUSTOM_DOMAINS_ENABLED=false
+CUSTOM_DOMAINS_ZONE= # 平台 SaaS 区域，如 shops.example.invalid
+CUSTOM_DOMAINS_TARGET= # CNAME 接入目标，须位于该区域下
+CUSTOM_DOMAINS_SITE_HOSTS= # 逗号分隔的平台自有域名，避免入口误判
+CF_SAAS_ZONE_ID=
