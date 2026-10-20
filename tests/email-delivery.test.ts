@@ -33,7 +33,9 @@ test('legacy email orders retain exact prices, immutable purchase notes and manu
   assert.equal(s.db.prepare('SELECT COUNT(*) n FROM recharge_orders').get()!.n, 0)
   const catalog = await (await s.request('/api/catalog')).json()
   assert.equal(catalog.checkoutEnabled, true)
-  assert.deepEqual(catalog.plans.filter((p: { enabled: number }) => p.enabled).map((p: { id: string }) => p.id), ['gemini-pro-18m', 'duolingo-12m'])
+  // Without supplier integrations the email-capable plans (Gemini, Duolingo,
+  // Gmail) all fall back to email delivery and stay purchasable.
+  assert.deepEqual(catalog.plans.filter((p: { enabled: number }) => p.enabled).map((p: { id: string }) => p.id), ['gemini-pro-18m', 'duolingo-12m', 'gmail-account'])
   const plan = s.db.prepare("SELECT * FROM catalog_plans WHERE id='gemini-pro-18m'").get()!
   const edited = await s.request('/api/admin/plans/gemini-pro-18m', { priceCents: 1990, enabled: true, version: plan.version, note: '更新领取要求', purchaseNote: '新增购买说明', deliveryInstructions: '新的默认步骤' }, s.admin)
   assert.equal(edited.status, 200)

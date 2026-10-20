@@ -28,6 +28,14 @@ ALIPAY_PUBLIC_KEY= # Configure locally; never commit a real value.
 # Optional official sandbox gateway; default is the official production gateway.
 # ALIPAY_GATEWAY="https://openapi-sandbox.dl.alipaydev.com/gateway.do"
 
+# USDT (TRC20) on-chain collection: own-wallet address, no processor.
+USDT_TRC20_ADDRESS= # Configure locally; never commit a real value.
+USDT_CNY_PER_USDT= # Fixed CNY per 1 USDT; snapshotted per payment at creation.
+# Optional overrides; defaults are the mainnet USDT contract and api.trongrid.io.
+# USDT_TRC20_CONTRACT=
+# USDT_TRONGRID_BASE=
+# USDT_TRONGRID_API_KEY=
+
 # recharge.example.invalid Partner API: platform collection + automatic recharge.
 # Keep real purchases off until credentials, authorized products and callbacks are verified.
 RECHARGE_API_BASE="https://recharge.example.invalid/v1"

@@ -8,6 +8,7 @@ import worker from '../worker/index.ts'
 import { alipay, canonical, gateway, responseObjectText, type AlipayConfig } from '../worker/payments/alipay.ts'
 import { amountCents, amountText } from '../worker/payments/types.ts'
 import { applyPaymentResult, findPayment, reconcilePayments } from '../worker/payments/service.ts'
+import { expectedMicros, formatUsdt, tailMicros } from '../worker/payments/usdt.ts'
 import { totpCode } from '../worker/totp.ts'
 import type { Env, Statement, Value } from '../worker/platform.ts'
 
@@ -320,4 +321,139 @@ test('missing expired QR trades retire only after the safety window', async t =>
   await s.pay('query'); assert.equal((await findPayment(s.env, s.id))!.state, 'pending')
   s.db.prepare('UPDATE payments SET expires_at=?').run(Date.now() - 121000)
   await s.pay('query'); assert.equal((await findPayment(s.env, s.id))!.state, 'closed')
+})
+
+const USDT_ADDR = 'T' + 'A'.repeat(33)
+const USDT_RATE = 7.3
+const txid = (n: number) => String(n).padStart(64, '3')
+const tron = (expectedRaw: string, tx: string, overrides: Record<string, unknown> = {}) => ({ transaction_id: tx, to: USDT_ADDR, value: expectedRaw, type: 'Transfer', token_info: { address: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t' }, ...overrides })
+function mockTron(t: TestContext, rows: unknown[], seen?: { urls: string[] }) {
+  t.mock.method(globalThis, 'fetch', async (input: string | URL | Request) => {
+    const href = String(input instanceof Request ? input.url : input)
+    if (seen) seen.urls.push(href)
+    if (!href.startsWith('https://api.trongrid.io/')) throw new Error('Unexpected fetch ' + href)
+    return new Response(JSON.stringify({ data: rows, meta: {} }), { headers: { 'Content-Type': 'application/json' } })
+  })
+}
+const withUsdt = (s: Awaited<ReturnType<typeof setup>>, provider = 'alipay') => { s.env.USDT_TRC20_ADDRESS = USDT_ADDR; s.env.USDT_CNY_PER_USDT = String(USDT_RATE); s.env.PAYMENT_PROVIDER = provider }
+// The create-time cooldown skips upstream calls for a fresh payment.
+const agePayment = (s: Awaited<ReturnType<typeof setup>>) => s.db.prepare('UPDATE payments SET updated_at=?').run(Date.now() - 20000)
+test('USDT expectations are deterministic integers with a bounded unique tail', () => {
+  assert.equal(tailMicros('YMX-ONE'), tailMicros('YMX-ONE'))
+  for (let index = 0; index < 50; index++) { const tail = tailMicros(crypto.randomUUID()); assert.ok(tail >= 1 && tail <= 900000) }
+  assert.equal(expectedMicros(13900, 'YMX-ONE', 7.3), Math.ceil(13900 * 10_000 / 7.3) + tailMicros('YMX-ONE'))
+  // ¥18.80 at 7.3 CNY/USDT is 2.575343 USDT, not 53× that.
+  assert.equal(expectedMicros(1880, 'YMX-GMAIL', 7.3), Math.ceil(1880 * 10_000 / 7.3) + tailMicros('YMX-GMAIL'))
+  assert.ok(Math.abs((expectedMicros(1880, 'YMX-GMAIL', 7.3) - tailMicros('YMX-GMAIL')) * 7.3 / 1_000_000 - 18.8) < 0.01)
+  assert.equal(formatUsdt(1014700001), '1014.700001'); assert.equal(formatUsdt(1), '0.000001')
+  for (const bad of [0, -1, 1.5, NaN]) assert.throws(() => formatUsdt(bad))
+})
+test('USDT create pins the wallet account, snapshots the exact expectation and survives a later rate change', async t => {
+  const s = await setup(t); s.live(); withUsdt(s, 'usdt')
+  const view = (await (await s.pay('create')).json()).payment
+  const expected = expectedMicros(13900, s.id, USDT_RATE)
+  assert.equal(view.provider, 'usdt'); assert.equal(view.qr, USDT_ADDR); assert.equal(view.expectedUsdt, formatUsdt(expected))
+  const row = (await findPayment(s.env, s.id))!
+  assert.equal(row.account, USDT_ADDR); assert.equal(row.expected_raw, expected); assert.equal(row.cny_per_usdt, USDT_RATE)
+  // The rate env changes must not reinterpret the pending order.
+  s.env.USDT_CNY_PER_USDT = '9.9'; agePayment(s)
+  mockTron(t, [tron(String(expected), txid(1))])
+  assert.equal((await (await s.pay('query')).json()).payment.status, 'paid')
+  assert.equal((await findPayment(s.env, s.id))!.trade_no, txid(1))
+  const o = (await (await s.request('/api/orders/' + s.id, undefined, s.cookie)).json()).order
+  assert.equal(o.paymentStatus, 'paid'); assert.equal(o.status, 'session')
+})
+test('USDT detection only trusts exact to/contract/value matches and rejects everything else', async t => {
+  const s = await setup(t); s.live(); withUsdt(s, 'usdt')
+  await s.pay('create'); agePayment(s)
+  const expected = String(expectedMicros(13900, s.id, USDT_RATE))
+  for (const patch of [{ to: 'TB' + 'A'.repeat(32) }, { token_info: { address: 'T' + 'C'.repeat(33) } }, { value: String(BigInt(expected) + 1n) }, { value: String(BigInt(expected) - 1n) }, { transaction_id: 'not-hex' }]) {
+    mockTron(t, [tron(expected, txid(1), patch)])
+    assert.equal((await (await s.pay('query')).json()).payment.status, 'pending')
+    assert.equal((await findPayment(s.env, s.id))!.state, 'pending')
+    agePayment(s)
+  }
+  mockTron(t, [tron(expected, txid(2))], { urls: [] })
+  const seen = { urls: [] as string[] }
+  s.db.prepare('UPDATE payments SET updated_at=?').run(Date.now() - 20000)
+  mockTron(t, [tron(expected, txid(2))], seen)
+  assert.equal((await (await s.pay('query')).json()).payment.status, 'paid')
+  assert.ok(seen.urls.length >= 1)
+  assert.match(seen.urls[0], /only_to=true&only_confirmed=true/)
+  assert.match(seen.urls[0], /contract_address=TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t/)
+  assert.match(seen.urls[0], /min_timestamp=\d+/)
+})
+test('USDT buyer polling is throttled to one upstream lookup per cooldown window', async t => {
+  const s = await setup(t); s.live(); withUsdt(s, 'usdt')
+  await s.pay('create')
+  const seen = { urls: [] as string[] }
+  mockTron(t, [], seen)
+  await s.pay('query') // Inside the cooldown: skipped.
+  assert.equal(seen.urls.length, 0)
+  agePayment(s)
+  await s.pay('query')
+  assert.equal(seen.urls.length, 1)
+  await s.pay('query')
+  assert.equal(seen.urls.length, 1)
+})
+test('USDT explicit close retires pre-expiry while post-expiry trades keep the safety window', async t => {
+  const s = await setup(t); s.live(); withUsdt(s, 'usdt')
+  await s.pay('create')
+  mockTron(t, [])
+  await s.pay('close')
+  assert.equal((await findPayment(s.env, s.id))!.state, 'closed')
+  const second = await (await s.request('/api/orders', { plan: 'plus', expectedPrice: 13900, key: crypto.randomUUID(), email: 'test@example.test' }, s.cookie)).json()
+  s.db.prepare("UPDATE orders SET mode='live' WHERE id=?").run(second.order.id)
+  const secondPay = (action: string) => s.request(`/api/orders/${second.order.id}/payment`, { action }, s.cookie)
+  await secondPay('create')
+  s.db.prepare('UPDATE payments SET expires_at=?').run(Date.now() - 30000); agePayment(s)
+  await secondPay('query'); assert.equal((await findPayment(s.env, second.order.id))!.state, 'pending')
+  s.db.prepare('UPDATE payments SET expires_at=?').run(Date.now() - 121000); agePayment(s)
+  await secondPay('query'); assert.equal((await findPayment(s.env, second.order.id))!.state, 'closed')
+})
+test('a consumed transfer cannot pay a same-expectation order twice', async t => {
+  const s = await setup(t); s.live(); withUsdt(s, 'usdt')
+  await s.pay('create'); agePayment(s)
+  const expected = String(expectedMicros(13900, s.id, USDT_RATE))
+  mockTron(t, [tron(expected, txid(1))])
+  assert.equal((await (await s.pay('query')).json()).payment.status, 'paid')
+  const other = await (await s.request('/api/orders', { plan: 'plus', expectedPrice: 13900, key: crypto.randomUUID(), email: 'test@example.test' }, s.cookie)).json()
+  s.db.prepare("UPDATE orders SET mode='live' WHERE id=?").run(other.order.id)
+  await s.request(`/api/orders/${other.order.id}/payment`, { action: 'create', method: 'usdt' }, s.cookie)
+  s.db.prepare('UPDATE payments SET expected_raw=? WHERE order_id=?').run(Number(expected), other.order.id); agePayment(s)
+  assert.equal((await s.request(`/api/orders/${other.order.id}/payment`, { action: 'query' }, s.cookie)).status, 503)
+  const row = (await findPayment(s.env, other.order.id))!
+  assert.equal(row.state, 'pending'); assert.equal(row.trade_no, null)
+})
+test('options lists configured channels and the requested method overrides the default provider', async t => {
+  const s = await setup(t); s.live(); withUsdt(s, 'usdt')
+  const catalog = (await (await s.request('/api/catalog')).json()).paymentMethods
+  assert.deepEqual(catalog, [{ method: 'alipay', name: '支付宝' }, { method: 'usdt', name: 'USDT (TRC20)' }])
+  const options = await (await s.request(`/api/orders/${s.id}/payment`, { action: 'options' }, s.cookie)).json()
+  assert.equal(options.methods.length, 2); assert.equal(options.payment, null)
+  await s.request(`/api/orders/${s.id}/payment`, { action: 'create', method: 'alipay' }, s.cookie)
+  assert.equal((await findPayment(s.env, s.id))!.provider, 'alipay')
+  const other = await (await s.request('/api/orders', { plan: 'plus', expectedPrice: 13900, key: crypto.randomUUID(), email: 'test@example.test' }, s.cookie)).json()
+  s.db.prepare("UPDATE orders SET mode='live' WHERE id=?").run(other.order.id)
+  assert.equal((await s.request(`/api/orders/${other.order.id}/payment`, { action: 'create', method: 'unknown' }, s.cookie)).status, 409)
+  assert.equal(await findPayment(s.env, other.order.id), null)
+  s.env.PAYMENT_PROVIDER = 'usdt'
+  await s.request(`/api/orders/${other.order.id}/payment`, { action: 'create' }, s.cookie)
+  assert.equal((await findPayment(s.env, other.order.id))!.provider, 'usdt')
+})
+test('USDT notifications are always rejected and refunds stay on the manual reference path', async t => {
+  const s = await setup(t); s.live(); withUsdt(s, 'usdt')
+  const response = await worker.fetch(new Request('https://shop.example.invalid/api/payments/notify/usdt', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'a=b' }), s.env)
+  assert.equal(response.status, 400)
+  await s.pay('create'); agePayment(s)
+  mockTron(t, [tron(String(expectedMicros(13900, s.id, USDT_RATE)), txid(1))])
+  await s.pay('query')
+  const admin = await s.admin()
+  assert.equal((await s.request(`/api/orders/${s.id}/refunds`, { key: crypto.randomUUID(), reason: '售后', version: 1 }, s.cookie)).status, 201)
+  const row = s.db.prepare("SELECT id FROM refund_cases WHERE order_id=? ORDER BY created_at DESC LIMIT 1").get(s.id)!.id as string
+  await s.request('/api/admin/refunds/' + row, { action: 'approve', version: 0, amountCents: 13900, note: '同意' }, admin)
+  assert.equal((await (await s.request('/api/admin/refunds/' + row, undefined, admin)).json()).paymentProvider, 'usdt')
+  assert.equal((await s.request('/api/admin/refunds/' + row, { action: 'execute-refund', version: 1, note: '缺流水号' }, admin)).status, 400)
+  assert.equal((await s.request('/api/admin/refunds/' + row, { action: 'execute-refund', version: 1, reference: txid(9), note: '人工原路退回' }, admin)).status, 200)
+  assert.equal(s.db.prepare('SELECT refunded_cents FROM orders WHERE id=?').get(s.id)!.refunded_cents, 13900)
 })

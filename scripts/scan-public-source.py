@@ -16,6 +16,7 @@ PUBLIC_HOSTS = {
     'api.cloudflare.com', 'challenges.cloudflare.com', 'developers.cloudflare.com',
     'api.resend.com', 'api.telegram.org', 'open.feishu.cn', 't.me',
     'openapi.alipay.com', 'openapi-sandbox.dl.alipaydev.com', 'qr.alipay.com',
+    'api.trongrid.io',
     'chatgpt.com', 'api.openai.com', 'cdn.auth0.com',
     'github.com', 'raw.githubusercontent.com', 'registry.npmjs.org',
     'www.w3.org', 'www.apache.org', 'ui.shadcn.com', 'transitions.dev', 'vite.dev',

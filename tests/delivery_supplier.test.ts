@@ -168,6 +168,10 @@ test('unpaid, test, demo, frozen and refunded orders never buy; stock, price, ba
   s.state.stock = 10; s.state.price = 9; assert.equal((await s.create()).status, 409)
   s.state.price = 0.6; s.state.balance = 0; s.ready(); await assert.rejects(fulfillDeliverySupplier(s.env, s.order.id)); assert.equal(s.state.posts.length, 0)
   s.state.balance = 1.9; s.env.DELIVERY_SUPPLIER_CHECKOUT_ENABLED = 'false'; s.ready(); await fulfillDeliverySupplier(s.env, s.order.id); assert.equal(s.state.posts.length, 0)
+  // The supplier kill switch no longer stops the storefront: email-capable
+  // plans fall back to email delivery; EMAIL_PRODUCTS_ENABLED is the hard off.
+  assert.equal((await s.create()).status, 201)
+  s.env.EMAIL_PRODUCTS_ENABLED = 'false'
   assert.equal((await s.create()).status, 409)
 })
 

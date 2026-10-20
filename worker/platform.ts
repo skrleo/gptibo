@@ -31,6 +31,8 @@ export interface Env {
   FEISHU_APP_SECRET?: string
   FEISHU_PAYOUT_RECIPIENT?: string
   FEISHU_STOCK_RECIPIENT?: string
+  /** Stock at or below this count triggers a restock alert; defaults to 5. */
+  STOCK_ALERT_THRESHOLD?: string
   PARTNER_AUTH_SECRET?: string
   EMAIL_PRODUCTS_ENABLED?: string
   DELIVERY_SUPPLIER_API_KEY?: string
@@ -53,6 +55,12 @@ export interface Env {
   ALIPAY_APP_PRIVATE_KEY?: string
   ALIPAY_PUBLIC_KEY?: string
   ALIPAY_GATEWAY?: string
+  /** Own-wallet USDT (TRC20) collection: on-chain polling, no processor. */
+  USDT_TRC20_ADDRESS?: string
+  USDT_CNY_PER_USDT?: string
+  USDT_TRC20_CONTRACT?: string
+  USDT_TRONGRID_BASE?: string
+  USDT_TRONGRID_API_KEY?: string
   RECHARGE_API_BASE?: string
   RECHARGE_PARTNER_ID?: string
   RECHARGE_KEY_ID?: string

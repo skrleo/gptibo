@@ -7,12 +7,13 @@ import { emailCheckoutEnabled } from '../email-delivery.ts'
 import { fulfillGmail, gmailCheckoutEnabled } from '../account_supplier/service.ts'
 import { ApiError, body, json, type Env } from '../platform.ts'
 import { getOrder, type Order } from '../order-state.ts'
-import { paymentProvider } from './providers.ts'
+import { availablePaymentMethods, paymentProvider } from './providers.ts'
+import { expectedMicros, formatUsdt, USDT_QUERY_COOLDOWN_MS, usdtRate } from './usdt.ts'
 import type { PaymentOrder, PaymentResult, PaymentProvider } from './types.ts'
 
-export type Payment = { order_id: string; provider: string; account: string; amount_cents: number; state: 'pending' | 'paid' | 'closed'; trade_no: string | null; qr: string | null; expires_at: number; lease_token: string | null; lease_until: number; notified_at: number | null }
+export type Payment = { order_id: string; provider: string; account: string; amount_cents: number; state: 'pending' | 'paid' | 'closed'; trade_no: string | null; qr: string | null; expires_at: number; lease_token: string | null; lease_until: number; notified_at: number | null; created_at: number; updated_at: number; expected_raw: number | null; cny_per_usdt: number | null }
 export const findPayment = (env: Env, id: string) => env.INTEREST_DB.prepare('SELECT * FROM payments WHERE order_id=?').bind(id).first<Payment>()
-const details = (p: Payment, o: Order): PaymentOrder => ({ id: p.order_id, amountCents: p.amount_cents, subject: o.is_test ? 'Gift2Card · 支付联调测试（不交付商品）' : `Gift2Card · ${emailProduct(o.plan)?.name ?? (isXGiftPlan(o.plan) ? o.plan_name : o.plan === 'codex-sms-once' ? 'Codex 接码' : 'ChatGPT ' + o.plan_name)}`, expiresAt: p.expires_at })
+const details = (p: Payment, o: Order): PaymentOrder => ({ id: p.order_id, amountCents: p.amount_cents, subject: o.is_test ? 'Gift2Card · 支付联调测试（不交付商品）' : `Gift2Card · ${emailProduct(o.plan)?.name ?? (isXGiftPlan(o.plan) ? o.plan_name : o.plan === 'codex-sms-once' ? 'Codex 接码' : 'ChatGPT ' + o.plan_name)}`, expiresAt: p.expires_at, createdAt: p.created_at, expectedRaw: p.expected_raw ?? undefined })
 function providerFor(env: Env, p: Payment) {
   const provider = paymentProvider(env, p.provider)
   if (provider.account !== p.account) throw new ApiError('支付商户配置已变化，请恢复该订单原渠道配置后处理。', 503)
@@ -46,7 +47,9 @@ export async function applyPaymentResult(env: Env, p: Payment, result: PaymentRe
   if (paid && isXGiftPlan(order.plan)) {
     try { await fulfillXGift(env, order.id) } catch { /* Keep confirmed payment; cron reconciles the original gift. */ }
   }
-  if (paid && isDeliverySupplierPlan(order.plan)) {
+  // Supplier-sourced orders (a procurement snapshot exists) auto-purchase;
+  // email-fallback orders are delivered through the email delivery workflow.
+  if (paid && isDeliverySupplierPlan(order.plan) && await env.INTEREST_DB.prepare('SELECT 1 FROM delivery_supplier_orders WHERE order_id=?').bind(order.id).first()) {
     try { await fulfillDeliverySupplier(env, order.id) } catch { /* Cron recovers the original receipt. */ }
   }
   if (paid && order.plan === 'gmail-account') {
@@ -61,7 +64,7 @@ async function locked<T>(env: Env, p: Payment, work: () => Promise<T>) {
   catch (e) {
     // Adapter messages are fixed strings. Never log requests, gateway bodies,
     // credentials, QR values, database errors or arbitrary exception messages.
-    const allowed = ['Alipay gateway unavailable', 'Alipay response malformed', 'Alipay response signature invalid', 'Alipay response object mismatch', 'Alipay precreate rejected', 'Invalid Alipay QR URL', 'Alipay query rejected', 'Alipay refund rejected', 'Alipay refund query rejected']
+    const allowed = ['Alipay gateway unavailable', 'Alipay response malformed', 'Alipay response signature invalid', 'Alipay response object mismatch', 'Alipay precreate rejected', 'Invalid Alipay QR URL', 'Alipay query rejected', 'Alipay refund rejected', 'Alipay refund query rejected', 'TronGrid unavailable', 'USDT expectation missing', 'Payment expired']
     console.warn('payment-operation-failed', e instanceof Error && allowed.includes(e.message) ? e.message : 'internal')
     throw e
   }
@@ -69,6 +72,12 @@ async function locked<T>(env: Env, p: Payment, work: () => Promise<T>) {
 }
 async function sync(env: Env, p: Payment, o: Order, close: boolean) {
   const provider = providerFor(env, p); const d = details(p, o)
+  // Buyer polling drives query(); cap upstream on-chain lookups per payment
+  // without delaying close/expiry retirement.
+  if (p.provider === 'usdt' && !close && Date.now() - p.updated_at < USDT_QUERY_COOLDOWN_MS) {
+    await env.INTEREST_DB.prepare('UPDATE payments SET updated_at=? WHERE order_id=?').bind(Date.now(), p.order_id).run()
+    return
+  }
   let result = await provider.query(d)
   await applyPaymentResult(env, p, result)
   if (result.status !== 'paid' && result.status !== 'closed' && close) {
@@ -86,22 +95,34 @@ async function sync(env: Env, p: Payment, o: Order, close: boolean) {
   }
   await env.INTEREST_DB.prepare('UPDATE payments SET updated_at=? WHERE order_id=?').bind(Date.now(), p.order_id).run()
 }
+const paymentView = (p: Payment, redemptionBlocked: boolean) => ({ provider: p.provider, status: p.state, qr: !redemptionBlocked && p.state === 'pending' && p.expires_at > Date.now() ? p.qr : null, expiresAt: p.expires_at, ...(p.provider === 'usdt' && p.state === 'pending' && p.expected_raw ? { expectedUsdt: formatUsdt(p.expected_raw) } : {}) })
 export async function paymentAction(request: Request, env: Env, order: Order, adminTest = false) {
   if (request.method !== 'POST') throw new ApiError('请通过订单发起支付操作。', 405)
   const data = await body(request)
-  if (!['create', 'query', 'close'].includes(String(data.action))) throw new ApiError('支付操作无效。')
+  if (!['create', 'query', 'close', 'options'].includes(String(data.action))) throw new ApiError('支付操作无效。')
   if (order.redemption_blocked && data.action === 'create') throw new ApiError('本订单已禁止再次兑换，请联系支持。', 409)
   if (order.mode !== 'live') throw new ApiError('历史测试记录不能发起收款。', 409)
-  const canCreate = (isXGiftPlan(order.plan) ? xgiftCheckoutEnabled(env) : order.plan === 'gmail-account' ? gmailCheckoutEnabled(env) : isDeliverySupplierPlan(order.plan) ? delivery_supplierCheckoutEnabled(env) : emailProduct(order.plan) ? emailCheckoutEnabled(env) : env.PAYMENT_CHECKOUT_ENABLED === 'true') || (adminTest && order.is_test === 1 && order.price_cents === 1 && !order.partner_id && env.PAYMENT_TEST_ENABLED === 'true')
+  const canCreate = (isXGiftPlan(order.plan) ? xgiftCheckoutEnabled(env) : order.plan === 'gmail-account' ? (gmailCheckoutEnabled(env) || emailCheckoutEnabled(env)) : isDeliverySupplierPlan(order.plan) ? (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env)) : emailProduct(order.plan) ? emailCheckoutEnabled(env) : env.PAYMENT_CHECKOUT_ENABLED === 'true') || (adminTest && order.is_test === 1 && order.price_cents === 1 && !order.partner_id && env.PAYMENT_TEST_ENABLED === 'true')
   if (!(await env.INTEREST_LIMITER.limit({ key: 'payment:' + order.owner_hash })).success) throw new ApiError('操作较频繁，请稍后再试。', 429)
+  if (data.action === 'options') {
+    const payment = await findPayment(env, order.id)
+    return json({ payment: payment ? paymentView(payment, Boolean((await getOrder(env, order.id)).redemption_blocked)) : null, methods: availablePaymentMethods(env) })
+  }
   let payment = await findPayment(env, order.id)
   if (!payment && data.action === 'create') {
     if (!canCreate) throw new ApiError('真实收款尚未开放。', 503)
-    const provider = paymentProvider(env, emailProduct(order.plan) || isXGiftPlan(order.plan) ? 'alipay' : env.PAYMENT_PROVIDER ?? '')
-    notifyUrl(env, provider.id)
+    // The buyer's requested channel wins; the legacy defaults only fill silence.
+    const method = typeof data.method === 'string' && data.method.trim() ? data.method.trim() : emailProduct(order.plan) || isXGiftPlan(order.plan) ? 'alipay' : env.PAYMENT_PROVIDER ?? ''
+    if (!availablePaymentMethods(env).some(m => m.method === method)) throw new ApiError('该支付方式暂不可用。', 409)
+    const provider = paymentProvider(env, method)
+    if (provider.id !== 'usdt') notifyUrl(env, provider.id)
     const now = Date.now()
-    await env.INTEREST_DB.prepare("INSERT INTO payments(order_id,provider,account,amount_cents,expires_at,created_at,updated_at) SELECT id,?,?,price_cents,?,?,? FROM orders WHERE id=? AND mode='live' AND payment_status='unpaid' AND status='pending' AND redemption_blocked=0 AND refund_hold=0 AND refunded_cents=0 ON CONFLICT(order_id) DO NOTHING")
-      .bind(provider.id, provider.account, now + 15 * 60000, now, now, order.id).run()
+    // Snapshot the USDT expectation at creation: a later env-rate change must
+    // never reinterpret a pending order.
+    const rate = method === 'usdt' ? usdtRate(env) : null
+    const expectedRaw = rate === null ? null : expectedMicros(order.price_cents, order.id, rate)
+    await env.INTEREST_DB.prepare("INSERT INTO payments(order_id,provider,account,amount_cents,expected_raw,cny_per_usdt,expires_at,created_at,updated_at) SELECT id,?,?,price_cents,?,?,?,?,? FROM orders WHERE id=? AND mode='live' AND payment_status='unpaid' AND status='pending' AND redemption_blocked=0 AND refund_hold=0 AND refunded_cents=0 ON CONFLICT(order_id) DO NOTHING")
+      .bind(provider.id, provider.account, expectedRaw, rate, now + 15 * 60000, now, now, order.id).run()
     payment = await findPayment(env, order.id)
   }
   if (!payment) throw new ApiError('该订单没有可用的支付记录。', 409)
@@ -122,7 +143,7 @@ export async function paymentAction(request: Request, env: Env, order: Order, ad
   })
   const current = (await findPayment(env, order.id))!
   const currentOrder = await getOrder(env, order.id)
-  return json({ payment: { provider: current.provider, status: current.state, qr: !currentOrder.redemption_blocked && current.state === 'pending' && current.expires_at > Date.now() ? current.qr : null, expiresAt: current.expires_at } })
+  return json({ payment: paymentView(current, Boolean(currentOrder.redemption_blocked)) })
 }
 export async function paymentNotification(request: Request, env: Env, providerId: string) {
   let provider: PaymentProvider | undefined
@@ -156,6 +177,9 @@ export async function refundThroughProvider(env: Env, order: Order, caseId: stri
   const p = await findPayment(env, order.id)
   if (!p) return null // Legacy/manual orders keep their existing recorded-transfer workflow.
   if (p.state !== 'paid' || order.payment_status !== 'paid' || !order.refund_hold) throw new ApiError('订单付款或售后状态不正确。', 409)
+  // USDT refunds are an out-of-band TRON transfer; falling through keeps the
+  // reviewed case on the manual-reference path where admin records the txid.
+  if (p.provider === 'usdt') return null
   const provider = providerFor(env, p); const d = details(p, order); const refund = { id: caseId, amountCents: amount }
   return locked(env, p, async () => {
     let result = await provider.queryRefund(d, refund)
