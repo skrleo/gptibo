@@ -55,6 +55,14 @@ export async function customerRefunds(request: Request, env: Env, order: Order) 
 
 export async function adminRefunds(request: Request, env: Env, url: URL) {
   const db = env.INTEREST_DB; const path = url.pathname
+  // TicketAlerts polls this alongside tickets/notifications every 15s.
+  if (path === '/api/admin/refunds/notifications' && request.method === 'GET') {
+    const [version, pending] = await Promise.all([
+      db.prepare('SELECT COUNT(*) n FROM refund_events').first<{ n: number }>(),
+      db.prepare("SELECT COUNT(*) n FROM refund_cases WHERE status IN ('pending','approved')").first<{ n: number }>(),
+    ])
+    return json({ version: version?.n ?? 0, pending: pending?.n ?? 0 })
+  }
   if (path === '/api/admin/refunds' && request.method === 'GET') {
     const page = Number(url.searchParams.get('page') ?? 1); const status = url.searchParams.get('status') ?? ''
     if (!Number.isInteger(page) || page < 1 || page > 10000 || (status && !['pending', 'approved', 'refunded', 'rejected', 'cancelled'].includes(status))) throw new ApiError('筛选条件无效。')

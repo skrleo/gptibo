@@ -17,6 +17,7 @@ import { productOrderRoute, productOrderSettings } from './product-order.ts'
 import { partnerOrderSummary } from './partner-order-summary.ts'
 import { domainBind, domainCheckRoute, domainRemove, domainView } from './custom-domain.ts'
 import { notificationSettingsRoute } from './partner-notifications.ts'
+import { partnerTicketRoutes } from './tickets.ts'
 
 export async function resolvePartner(env: Env, slug: unknown) {
   if (slug === undefined || slug === null || slug === '') return null
@@ -77,6 +78,7 @@ export async function partnerRoutes(request: Request, env: Env, url: URL) {
   if (path === '/api/partner/support-contacts') return supportContactsRoute(request, env, p)
   if (path === '/api/partner/announcement') return announcementRoute(request, env, p)
   if (path === '/api/partner/notification-settings') return notificationSettingsRoute(request, env, p)
+  if (path.startsWith('/api/partner/tickets')) return await partnerTicketRoutes(request, env, url, p)
   if (path === '/api/partner/product-order') return productOrderRoute(request, env, p)
   if (path === '/api/partner/domain' && request.method === 'GET') return json(await domainView(env, p.id))
   if (path === '/api/partner/domain' && request.method === 'POST') return domainBind(request, env, p)

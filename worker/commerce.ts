@@ -7,6 +7,7 @@ import { emailProduct } from '../shared/email-products.ts'
 import { emailCheckoutEnabled, emailDeliveryRoute, emailDeliverySummary, membershipDeliveryPreview } from './email-delivery.ts'
 import { buyerAccess, recoveryRoutes } from './customer-auth.ts'
 import { adminRefunds, customerRefunds } from './refunds.ts'
+import { adminTicketRoutes } from './tickets.ts'
 import { change, getOrder, settle, settleDue, type Order, type Status } from './order-state.ts'
 import { ApiError, body, cookie, hash, json, randomToken, readCookie, type Env, type Value } from './platform.ts'
 import { authRoute, requireAdmin } from './admin-auth.ts'
@@ -86,6 +87,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       if (path === '/api/admin/support-contacts') return await supportContactsRoute(request, env)
       if (path.startsWith('/api/admin/payments/test')) return await paymentTesting(request, env, url)
       if (path.startsWith('/api/admin/refunds')) return await adminRefunds(request, env, url)
+      if (path.startsWith('/api/admin/tickets')) return await adminTicketRoutes(request, env, url)
       if (path.startsWith('/api/admin/partners') || path.startsWith('/api/admin/partner-payouts')) return await adminPartnerRoutes(request, env, url)
       return await admin(request, env, url)
     }
