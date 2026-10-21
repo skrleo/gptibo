@@ -241,7 +241,7 @@ func TestHealthAndWorkerLifecycle(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- worker.Run(ctx, app, "test-worker", logger) }()
+	go func() { done <- worker.Run(ctx, app, "test-worker", logger, nil) }()
 	deadline := time.Now().Add(3 * time.Second)
 	for !app.WorkerReady(context.Background(), "test-worker") && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)

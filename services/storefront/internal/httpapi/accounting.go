@@ -52,7 +52,7 @@ func registerAccounting(admin *gin.RouterGroup, m management.Service, token func
 				dates[i] = &n
 			}
 		}
-		v, e := m.AccountingReport(c.Request.Context(), page(c), c.DefaultQuery("status", "success"), dates[0], dates[1])
+		v, e := m.AccountingReport(c.Request.Context(), page(c), c.DefaultQuery("status", "success"), dates[0], dates[1], c.Query("orders") == "all")
 		reply(c, v, e)
 	})
 	admin.GET("/accounting/:id", func(c *gin.Context) {

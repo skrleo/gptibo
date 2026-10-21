@@ -462,12 +462,45 @@ func register(r *gin.Engine, s *store.Store, opts Options) {
 	partner.GET("/announcement", announcement)
 	partner.POST("/announcement", announcement)
 	admin.GET("/audit", func(c *gin.Context) {
-		out, e := m.Audit(c.Request.Context(), page(c))
+		action, target, query := c.Query("action"), c.Query("target"), c.Query("q")
+		if len(action) > 64 || len(target) > 64 || len(query) > 120 {
+			fail(c, fault.New(400, "筛选条件无效。"))
+			return
+		}
+		out, total, e := m.Audit(c.Request.Context(), page(c), action, target, query)
 		if e != nil {
 			fail(c, e)
 			return
 		}
-		c.JSON(200, gin.H{"rows": out, "page": page(c)})
+		c.JSON(200, gin.H{"rows": out, "total": total, "page": page(c)})
+	})
+	admin.GET("/catalog-order", func(c *gin.Context) {
+		out, e := m.CatalogOrder(c.Request.Context())
+		if e != nil {
+			fail(c, e)
+			return
+		}
+		c.JSON(200, out)
+	})
+	admin.POST("/catalog-order", func(c *gin.Context) {
+		var in struct {
+			ProductIds []string `json:"productIds"`
+			PlanIds    []string `json:"planIds"`
+			Version    *int64   `json:"version"`
+		}
+		if !read(c, &in) {
+			return
+		}
+		if in.Version == nil {
+			fail(c, fault.New(400, "请提供当前排序版本。"))
+			return
+		}
+		out, e := m.SaveCatalogOrder(c.Request.Context(), token(c, "admin"), in.ProductIds, in.PlanIds, *in.Version)
+		if e != nil {
+			fail(c, e)
+			return
+		}
+		c.JSON(200, out)
 	})
 	registerWorkspace(admin, partner, m, token)
 	registerHierarchy(admin, partner, m, token, opts.Origin)

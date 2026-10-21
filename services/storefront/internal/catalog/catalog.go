@@ -11,7 +11,13 @@ import (
 
 var ErrShopUnavailable = errors.New("shop unavailable")
 var slugPattern = regexp.MustCompile(`^(?:[A-Z0-9]{6}|[A-Z]{8}|[a-z0-9][a-z0-9-]{2,31})$`)
-var productOrder = []string{"chatgpt", "gemini", "duolingo", "x-premium", "gmail", "claude", "grok", "codex-sms"}
+var productOrder = []string{"chatgpt", "muse-ai", "gemini", "duolingo", "x-premium", "gmail", "claude", "grok", "codex-sms"}
+
+// KnownProducts exposes the canonical product order to other packages, mirroring
+// shared/product-order.ts on the Workers side.
+func KnownProducts() []string {
+	return append([]string{}, productOrder...)
+}
 
 func NormalizeProductOrder(saved []string) []string {
 	known := map[string]bool{}
@@ -147,7 +153,7 @@ func (s Service) Read(ctx context.Context, slug string) (Response, error) {
 	}
 	sql := `SELECT c.id,c.product_id,c.name,c.price_cents,c.partner_enabled::int,c.renewal_only::int,
  c.purchase_note,c.delivery_instructions,c.version,(extract(epoch FROM c.updated_at)*1000)::bigint,c.enabled,NULL::bigint,c.supports_warranty,false
- FROM catalog_plans c ORDER BY c.sort_order,c.id`
+ FROM catalog_plans c ORDER BY array_position((SELECT plan_ids FROM catalog_order WHERE id=1),c.id) NULLS LAST,c.sort_order,c.id`
 	var args []any
 	if out.Partner != nil {
 		sql = `SELECT c.id,c.product_id,c.name,COALESCE(sp.price_cents,p.price_cents),c.partner_enabled::int,c.renewal_only::int,
@@ -158,7 +164,7 @@ func (s Service) Read(ctx context.Context, slug string) (Response, error) {
  AND COALESCE(sp.price_cents,p.price_cents)-coupon.discount_cents>=p.cost_cents
  AND COALESCE(sp.price_cents,p.price_cents)-coupon.discount_cents>0
  AND (SELECT count(*) FROM orders o WHERE o.coupon_id=coupon.id AND coupon_reserved(o))<coupon.max_uses)
- FROM catalog_plans c JOIN partner_prices p ON p.plan=c.id LEFT JOIN store_prices sp ON sp.store_id=$2 AND sp.plan=c.id WHERE p.partner_id=$1 ORDER BY c.sort_order,c.id`
+ FROM catalog_plans c JOIN partner_prices p ON p.plan=c.id LEFT JOIN store_prices sp ON sp.store_id=$2 AND sp.plan=c.id WHERE p.partner_id=$1 ORDER BY array_position((SELECT plan_ids FROM catalog_order WHERE id=1),c.id) NULLS LAST,c.sort_order,c.id`
 		args = []any{owner, shopID}
 	}
 	rows, err := tx.Query(ctx, sql, args...)
@@ -192,6 +198,14 @@ func (s Service) Read(ctx context.Context, slug string) (Response, error) {
 	rows.Close()
 	if err != nil {
 		return out, err
+	}
+	if out.Partner == nil {
+		var saved []string
+		if err = tx.QueryRow(ctx, `SELECT product_ids FROM catalog_order WHERE id=1`).Scan(&saved); err == nil {
+			out.ProductOrder = NormalizeProductOrder(saved)
+		} else if !errors.Is(err, pgx.ErrNoRows) {
+			return out, err
+		}
 	}
 	err = tx.QueryRow(ctx, "SELECT wechat,qq,email FROM support_contacts WHERE owner=$1", owner).Scan(&out.SupportContacts.Wechat, &out.SupportContacts.QQ, &out.SupportContacts.Email)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {

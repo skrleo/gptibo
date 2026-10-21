@@ -61,7 +61,7 @@ func TestProcurementRecoversOriginalPurchaseAndFreezesDelivery(t *testing.T) {
 				})
 			} else {
 				plan = "duolingo-12m"
-				service.DeliverySupplier, _ = procurement.NewDeliverySupplier("fixture-key")
+				service.DeliverySupplier, _ = procurement.NewDeliverySupplier("", "fixture-key")
 				service.DeliverySupplier.HTTP.Transport = rechargeTransport(func(r *http.Request) (*http.Response, error) {
 					var data any
 					switch r.URL.Path {
@@ -158,7 +158,7 @@ func TestProcurementRecoversOriginalPurchaseAndFreezesDelivery(t *testing.T) {
 func TestDeliverySupplierReceiptRecoveryRequiresExactRejectedAttempt(t *testing.T) {
 	owner, app, a, h, authMail := identityFixture(t)
 	admin := login(t, h, authMail, "admin", "")
-	client, _ := procurement.NewDeliverySupplier("fixture-key")
+	client, _ := procurement.NewDeliverySupplier("", "fixture-key")
 	client.HTTP.Transport = rechargeTransport(func(r *http.Request) (*http.Response, error) {
 		return &http.Response{StatusCode: 400, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"error_code":"INVALID_IDEMPOTENCY_KEY"}`))}, nil
 	})

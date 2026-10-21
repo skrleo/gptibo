@@ -174,15 +174,26 @@ func validateGoods(g Goods, ceiling int64) error {
 }
 
 type DeliverySupplier struct {
+	Base string
 	Key  string
 	HTTP *http.Client
 }
 
-func NewDeliverySupplier(key string) (*DeliverySupplier, error) {
+// NewDeliverySupplier pins the API base the same way the Worker's apiBase()
+// does: default endpoint when unset, https-only, no credentials in the URL and
+// exactly the /api/v1 path, so a mistyped base cannot leak the key elsewhere.
+func NewDeliverySupplier(base, key string) (*DeliverySupplier, error) {
 	if key == "" {
 		return nil, errors.New("missing DeliverySupplier key")
 	}
-	return &DeliverySupplier{key, client(15)}, nil
+	if base == "" {
+		base = "https://delivery.example.invalid/api/v1"
+	}
+	u, e := url.Parse(base)
+	if e != nil || u.Scheme != "https" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || strings.TrimSuffix(u.Path, "/") != "/api/v1" {
+		return nil, errors.New("invalid DeliverySupplier API base")
+	}
+	return &DeliverySupplier{u.Scheme + "://" + u.Host + "/api/v1", key, client(15)}, nil
 }
 func (n *DeliverySupplier) Call(ctx context.Context, path, receipt string, payload *string, out any) error {
 	if path != "/products" && path != "/me" && path != "/order" && !(strings.HasPrefix(path, "/order/") && identifier.MatchString(strings.TrimPrefix(path, "/order/"))) {
@@ -195,7 +206,7 @@ func (n *DeliverySupplier) Call(ctx context.Context, path, receipt string, paylo
 			return errors.New("invalid procurement request")
 		}
 	}
-	req, e := http.NewRequestWithContext(ctx, method, "https://delivery.example.invalid/api/v1"+path, strings.NewReader(body))
+	req, e := http.NewRequestWithContext(ctx, method, n.Base+path, strings.NewReader(body))
 	if e != nil {
 		return e
 	}

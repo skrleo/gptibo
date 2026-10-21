@@ -260,7 +260,11 @@ func run(logger *slog.Logger) error {
 			jobs = append(jobs, worker.Job{Name: "partner-order-emails", Wake: true, Interval: 15 * time.Second, Timeout: 4 * time.Minute, Run: func(c context.Context) error { _, e := deliveryService.PartnerOrderNotifications(c, 20); return e }})
 			jobs = append(jobs, worker.Job{Name: "recharge-reminders", Interval: time.Minute, Timeout: 4 * time.Minute, Run: func(c context.Context) error { _, e := deliveryService.Reminders(c, 20); return e }})
 		}
-		return worker.Run(ctx, s, cfg.WorkerID, logger, jobs...)
+		health := &worker.Health{Store: s}
+		if notificationSender != nil {
+			health.Sender = notificationSender
+		}
+		return worker.Run(ctx, s, cfg.WorkerID, logger, health, jobs...)
 	}
 	gin.SetMode(gin.ReleaseMode)
 	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.Router(s, cfg.WorkerID, logger, httpapi.Options{AdminAccess: httpConfig.AdminAccess, SecurityAudit: auditService, Turnstile: httpConfig.Turnstile, AuthTurnstile: httpConfig.AuthTurnstile, OrderProtection: true, TrafficProtection: httpConfig.TrafficProtection, Domains: domainService, Rehearsal: httpConfig.Rehearsal, Origin: httpConfig.Origin, Auth: identity, TrustedProxies: httpConfig.TrustedProxies, OrderTesting: httpConfig.OrderTesting, Payments: &paymentService, PaymentTesting: httpConfig.PaymentTesting, MailSender: mailSender, AdminEmail: httpConfig.Auth.AdminEmail, Recharge: rechargeService, Procurement: procurementService, XGift: xgiftService, Telegram: telegramClient, LegacyBuyer: httpConfig.LegacyBuyer}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}

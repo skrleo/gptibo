@@ -80,7 +80,7 @@ func TestPaymentWakeIsCommittedAndSurvivesWorkerRestart(t *testing.T) {
 		run, stop := context.WithCancel(ctx)
 		done := make(chan error, 1)
 		go func() {
-			done <- worker.Run(run, app, "wake-test", slog.New(slog.NewTextHandler(io.Discard, nil)), worker.Job{Name: "probe", Wake: true, Interval: time.Hour, Timeout: time.Second, Run: func(ctx context.Context) error {
+			done <- worker.Run(run, app, "wake-test", slog.New(slog.NewTextHandler(io.Discard, nil)), nil, worker.Job{Name: "probe", Wake: true, Interval: time.Hour, Timeout: time.Second, Run: func(ctx context.Context) error {
 				calls.Add(1)
 				o, e := orders.Get(ctx, app.DB, "WAKE", nil, false)
 				if e == nil && o.Payment == "paid" {

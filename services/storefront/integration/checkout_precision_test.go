@@ -25,7 +25,7 @@ func TestEmailStepChoiceAndFractionalGeminiFulfillment(t *testing.T) {
 	pay := payments.Service{Store: app, Provider: ali, Providers: map[string]payments.Provider{ali.ID(): ali, wx.ID(): wx}, Checkout: true, NotifyOrigin: testOrigin}
 	sender := &frozenMail{}
 	service := &procurement.Service{Store: app, Auth: a, Delivery: delivery.Service{Store: app, Sender: sender, Origin: testOrigin}, EmailEnabled: true, PaymentReady: true, NYEnabled: true, FX: 6.7}
-	service.DeliverySupplier, _ = procurement.NewDeliverySupplier("fixture-key")
+	service.DeliverySupplier, _ = procurement.NewDeliverySupplier("", "fixture-key")
 	purchases, productCalls := 0, 0
 	charged, refunded, net := "0.445", "0", "0.445"
 	service.DeliverySupplier.HTTP.Transport = rechargeTransport(func(r *http.Request) (*http.Response, error) {
@@ -129,7 +129,7 @@ func TestSoldOutCheckoutRollsBackAndCanRetryAfterRestock(t *testing.T) {
 	pay := payments.Service{Store: app, Provider: provider, Checkout: true, NotifyOrigin: testOrigin}
 	sender := &frozenMail{}
 	service := &procurement.Service{EmailEnabled: true, NYEnabled: true, FX: 6.7}
-	service.DeliverySupplier, _ = procurement.NewDeliverySupplier("fixture-key")
+	service.DeliverySupplier, _ = procurement.NewDeliverySupplier("", "fixture-key")
 	stock, availability, price := 0, "sold_out", "0.41"
 	service.DeliverySupplier.HTTP.Transport = rechargeTransport(func(r *http.Request) (*http.Response, error) {
 		if r.Method != "GET" || r.URL.Path != "/api/v1/products" {

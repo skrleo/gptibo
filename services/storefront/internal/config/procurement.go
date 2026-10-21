@@ -53,7 +53,7 @@ func LoadProcurement() (*procurement.Service, error) {
 		if e != nil {
 			return nil, e
 		}
-		s.DeliverySupplier, e = procurement.NewDeliverySupplier(key)
+		s.DeliverySupplier, e = procurement.NewDeliverySupplier(os.Getenv("DELIVERY_SUPPLIER_API_BASE"), key)
 		if e != nil {
 			return nil, e
 		}

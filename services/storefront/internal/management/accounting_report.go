@@ -10,7 +10,7 @@ import (
 
 const reportTotals = `count(*) order_count,COALESCE(sum(paid),0)::bigint paid_count,COALESCE(sum(completed),0)::bigint completed_count,COALESCE(sum(paid_cents),0)::bigint paid_cents,COALESCE(sum(refund_cents),0)::bigint refund_cents,COALESCE(sum(paid_cents) FILTER(WHERE completed=1),0)::bigint completed_paid_cents,COALESCE(sum(refund_cents) FILTER(WHERE completed=1),0)::bigint completed_refund_cents,COALESCE(sum(cost_cents),0)::bigint cost_cents,COALESCE(sum(commission_cents),0)::bigint commission_cents,CASE WHEN count(*)=count(profit_cents) THEN COALESCE(sum(profit_cents),0)::bigint ELSE NULL END profit_cents,count(*) FILTER(WHERE completed=1 AND cost_cents IS NULL) missing_cost_count,count(*) FILTER(WHERE completed=1 AND commission_cents IS NULL) missing_commission_count,COALESCE(sum(held) FILTER(WHERE completed=1),0)::bigint held_count`
 
-func (s Service) AccountingReport(ctx context.Context, page int, status string, start, end *int64) (map[string]any, error) {
+func (s Service) AccountingReport(ctx context.Context, page int, status string, start, end *int64, all bool) (map[string]any, error) {
 	if page < 1 || page > 10000 || (start != nil && (*start < 0 || *start > 99999999999999)) || (end != nil && (*end < 0 || *end > 99999999999999)) || (start != nil && end != nil && *start >= *end) {
 		return nil, fault.New(400, "时间范围或页码无效。")
 	}
@@ -41,7 +41,13 @@ func (s Service) AccountingReport(ctx context.Context, page int, status string, 
 	if e != nil {
 		return nil, e
 	}
-	list, e := rows(ctx, tx, base+`SELECT * FROM report ORDER BY created_at DESC,id DESC LIMIT 20 OFFSET $4`, start, end, status, (page-1)*20)
+	// Excel export fetches every matching order at once, capped to keep the
+	// response bounded; the paginated table keeps its 20-row window.
+	limit, offset := 20, (page-1)*20
+	if all {
+		limit, offset = 5000, 0
+	}
+	list, e := rows(ctx, tx, base+`SELECT * FROM report ORDER BY created_at DESC,id DESC LIMIT $4 OFFSET $5`, start, end, status, limit, offset)
 	if e != nil {
 		return nil, e
 	}

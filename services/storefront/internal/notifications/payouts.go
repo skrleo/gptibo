@@ -83,6 +83,25 @@ func (f *Feishu) Send(ctx context.Context, p Payout) error {
 	return e
 }
 
+// Alert pages the shared bot about an operational event (cron stalls). The
+// uuid window keeps Feishu-side retries idempotent per key + 6h window.
+func (f *Feishu) Alert(ctx context.Context, key, text string) error {
+	token, e := f.request(ctx, "/auth/v3/tenant_access_token/internal", map[string]any{"app_id": f.App, "app_secret": f.Secret}, "")
+	if e != nil {
+		return e
+	}
+	if token == "" {
+		return errors.New("notification token unavailable")
+	}
+	content, _ := json.Marshal(map[string]string{"text": text})
+	kind := "open_id"
+	if strings.HasPrefix(f.Recipient, "oc_") {
+		kind = "chat_id"
+	}
+	_, e = f.request(ctx, "/im/v1/messages?receive_id_type="+kind, map[string]any{"receive_id": f.Recipient, "msg_type": "text", "content": string(content), "uuid": fmt.Sprintf("ymx-cron-%s-%d", key, time.Now().UnixMilli()/21600000)}, token)
+	return e
+}
+
 type PayoutSender interface {
 	Send(context.Context, Payout) error
 }

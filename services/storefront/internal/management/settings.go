@@ -3,6 +3,8 @@ package management
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/jackc/pgx/v5"
@@ -137,9 +139,33 @@ func (s Service) Partner(ctx context.Context, id string) (map[string]any, error)
 	}
 	return out[0], nil
 }
-func (s Service) Audit(ctx context.Context, page int) ([]map[string]any, error) {
+func (s Service) Audit(ctx context.Context, page int, action, target, query string) ([]map[string]any, int64, error) {
 	if page < 1 || page > 10000 {
-		return nil, fault.New(400, "页码无效。")
+		return nil, 0, fault.New(400, "页码无效。")
 	}
-	return rows(ctx, s.Store.DB, "SELECT id::text,actor_role,actor_id,action,target,target AS target_id,detail,COALESCE(detail->>'note',action) note,(extract(epoch FROM created_at)*1000)::bigint AS created_at FROM audit_events ORDER BY created_at DESC,id LIMIT 50 OFFSET $1", (page-1)*50)
+	sql := `SELECT id::text,actor_role,actor_id,action,target,target AS target_id,detail,COALESCE(detail->>'note',action) note,(extract(epoch FROM created_at)*1000)::bigint AS created_at FROM audit_events`
+	conditions, args := []string{}, []any{}
+	if action != "" {
+		args = append(args, action)
+		conditions = append(conditions, fmt.Sprintf("action=$%d", len(args)))
+	}
+	if target != "" {
+		args = append(args, target)
+		conditions = append(conditions, fmt.Sprintf("target=$%d", len(args)))
+	}
+	if query != "" {
+		args = append(args, query)
+		conditions = append(conditions, fmt.Sprintf("detail->>'note' LIKE '%%'||$%d||'%%'", len(args)))
+	}
+	where := ""
+	if len(conditions) > 0 {
+		where = " WHERE " + strings.Join(conditions, " AND ")
+	}
+	var total int64
+	if e := s.Store.DB.QueryRow(ctx, "SELECT count(*) FROM audit_events"+where, args...).Scan(&total); e != nil {
+		return nil, 0, e
+	}
+	args = append(args, (page-1)*20)
+	out, e := rows(ctx, s.Store.DB, sql+where+" ORDER BY created_at DESC,id LIMIT 20 OFFSET $"+strconv.Itoa(len(args)), args...)
+	return out, total, e
 }

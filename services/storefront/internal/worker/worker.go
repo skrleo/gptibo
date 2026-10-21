@@ -18,7 +18,7 @@ type Job struct {
 	Wake              bool
 }
 
-func Run(ctx context.Context, s *store.Store, id string, logger *slog.Logger, jobs ...Job) error {
+func Run(ctx context.Context, s *store.Store, id string, logger *slog.Logger, health *Health, jobs ...Job) error {
 	ctx, stop := context.WithCancel(ctx)
 	var workers sync.WaitGroup
 	defer func() { stop(); workers.Wait() }()
@@ -43,6 +43,9 @@ func Run(ctx context.Context, s *store.Store, id string, logger *slog.Logger, jo
 				cancel()
 				if err != nil && ctx.Err() == nil {
 					logger.Error("business reconciliation failed", "job", job.Name)
+					health.Failure(ctx, job.Name)
+				} else if err == nil {
+					health.Success(ctx, job.Name)
 				}
 				if time.Since(started) > time.Second {
 					logger.Info("business reconciliation duration", "job", job.Name, "duration_ms", time.Since(started).Milliseconds())

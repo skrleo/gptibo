@@ -242,7 +242,8 @@ func ProvisionPartner(ctx context.Context, tx pgx.Tx, actor auth.Principal, emai
 	if !created {
 		return "", "", fault.New(503, "推广码生成暂时失败，请重试。")
 	}
-	if _, e := tx.Exec(ctx, `INSERT INTO partner_prices(partner_id,plan,price_cents,cost_cents) SELECT $1,id,price_cents,COALESCE(default_cost_cents,price_cents) FROM catalog_plans`, id); e != nil {
+	// Manual-fulfillment plans (muse-ai-once) never enter partner supply, matching the Worker's provisioning.
+	if _, e := tx.Exec(ctx, `INSERT INTO partner_prices(partner_id,plan,price_cents,cost_cents) SELECT $1,id,price_cents,COALESCE(default_cost_cents,price_cents) FROM catalog_plans WHERE id<>'muse-ai-once'`, id); e != nil {
 		return "", "", e
 	}
 	if e := audit(ctx, tx, actor, "partner-create", id, map[string]any{"slug": slug}); e != nil {
