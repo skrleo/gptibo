@@ -19,7 +19,7 @@ export async function provisionPartner(env: Env, email: string, actor: string, t
       const values: Value[] = telegram ? [telegram.userId, telegram.lockToken, Date.now(), Date.now()] : []
       await db.batch([
         db.prepare(`INSERT INTO partners(id,slug,name,email,created_at,updated_at) SELECT ?,?,'代理商店',?,?,? WHERE ${guard}`).bind(id, slug, email, now, now, ...values),
-        db.prepare("INSERT INTO partner_prices(partner_id,plan,cost_cents,price_cents) SELECT ?,c.id,COALESCE(d.cost_cents,c.price_cents),MAX(c.price_cents,COALESCE(d.cost_cents,c.price_cents)) FROM catalog_plans c LEFT JOIN partner_default_prices d ON d.plan=c.id WHERE c.id<>'muse-ai-once' AND EXISTS(SELECT 1 FROM partners WHERE id=?)").bind(id, id),
+        db.prepare("INSERT INTO partner_prices(partner_id,plan,cost_cents,price_cents) SELECT ?,c.id,COALESCE(d.cost_cents,c.price_cents),MAX(c.price_cents,COALESCE(d.cost_cents,c.price_cents)) FROM catalog_plans c LEFT JOIN partner_default_prices d ON d.plan=c.id WHERE c.id NOT IN ('muse-ai-once','mail-queue-once') AND EXISTS(SELECT 1 FROM partners WHERE id=?)").bind(id, id),
         db.prepare("INSERT INTO admin_audit(id,target_id,action,note,created_at) SELECT ?,id,'partner-create',?,? FROM partners WHERE id=?").bind(crypto.randomUUID(), actor + ': 开通代理 代理商店', now, id),
         ...(telegram ? [
           db.prepare('INSERT INTO telegram_partner_applications(id,user_id,group_id,partner_id,wechat,qq,email,created_at,next_attempt_at) SELECT ?,?,?,id,?,?,?,?,? FROM partners WHERE id=?').bind(crypto.randomUUID(), telegram.userId, telegram.groupId, telegram.wechat, telegram.qq, email, now, now, id),

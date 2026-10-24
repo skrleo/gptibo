@@ -4,6 +4,8 @@ import { recoverXGift, fulfillXGift, preflightXGift, xgiftCheckoutEnabled, xgift
 import { xgiftAdmin } from './xgift/admin.ts'
 import { confirmDeliverySupplierNotPurchased, fulfillDeliverySupplier, delivery_supplierAdmin, delivery_supplierCheckoutEnabled, delivery_supplierSnapshot, delivery_supplierSnapshotStatement, retryDeliverySupplierRejectedReceipt } from './delivery_supplier/service.ts'
 import { emailProduct } from '../shared/email-products.ts'
+import { isMailQueuePlan } from '../shared/mail-queue-products.ts'
+import { mailQueueAdmin, mailQueueCheckoutEnabled, mailQueueSummary } from './mail-queue.ts'
 import { emailCheckoutEnabled, emailDeliveryRoute, emailDeliverySummary, membershipDeliveryPreview } from './email-delivery.ts'
 import { buyerAccess, recoveryRoutes } from './customer-auth.ts'
 import { adminRefunds, customerRefunds } from './refunds.ts'
@@ -52,7 +54,7 @@ const customerOrder = async (env: Env, o: Order, contacts = new Map<string, Prom
   contacts.set(owner, settings)
   const [support, fulfillment] = await Promise.all([settings, rechargeSummary(env, o)])
   if (fulfillment) Object.assign(fulfillment, { syncError })
-  return { ...publicOrder(o), xgift: await xgiftSummary(env, o), manualFulfillment: isManualFulfillmentOrder(o, Boolean(fulfillment)) || Boolean(emailProduct(o.plan)), delivery: await emailDeliverySummary(env, o), supportContacts: support.contacts, refundHold: !!o.refund_hold || !!fulfillment?.financialHold, fulfillment }
+  return { ...publicOrder(o), xgift: await xgiftSummary(env, o), manualFulfillment: isManualFulfillmentOrder(o, Boolean(fulfillment)) || Boolean(emailProduct(o.plan)), delivery: await emailDeliverySummary(env, o), mailQueue: await mailQueueSummary(env, o), supportContacts: support.contacts, refundHold: !!o.refund_hold || !!fulfillment?.financialHold, fulfillment }
 }
 async function orderPartnerSource(env: Env, order: Order): Promise<OrderPartnerSource | null> {
   if (!order.partner_id) return null
@@ -95,6 +97,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       if (path.startsWith('/api/admin/payments/test')) return await paymentTesting(request, env, url)
       if (path.startsWith('/api/admin/refunds')) return await adminRefunds(request, env, url)
       if (path.startsWith('/api/admin/tickets')) return await adminTicketRoutes(request, env, url)
+      if (path === '/api/admin/mail-queue' || path.startsWith('/api/admin/mail-queue/')) return await mailQueueAdmin(request, env, url)
       if (path.startsWith('/api/admin/partners') || path.startsWith('/api/admin/partner-payouts')) return await adminPartnerRoutes(request, env, url)
       return await admin(request, env, url)
     }
@@ -104,6 +107,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       const live = supplierCheckoutEnabled(env)
       const testing = env.ORDER_TESTING_ENABLED === 'true'
       const email = emailCheckoutEnabled(env), gmail = gmailCheckoutEnabled(env), delivery_supplier = delivery_supplierCheckoutEnabled(env)
+      const mail_queue = await mailQueueCheckoutEnabled(env)
       const paymentMethods = await enabledPaymentMethods(env)
       const manual = testing || (env.PAYMENT_CHECKOUT_ENABLED === 'true' && paymentMethods.length > 0)
       const mapped = live ? productMap(env) : {}
@@ -114,7 +118,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       ])
       // Storefront prices are configured retail prices, independent of supplier latency.
       const offers = (catalog.plans as Plan[]).map(plan => ({ ...plan, enabled: plan.enabled && (
-        isManualFulfillmentPlan(plan.id) ? manual : isXGiftPlan(plan.id) ? xgiftCheckoutEnabled(env) : plan.id === 'gmail-account' ? (gmail || email) : isDeliverySupplierPlan(plan.id) ? (delivery_supplier || (emailProduct(plan.id) ? email : false)) : emailProduct(plan.id) ? email : testing || (live && Boolean(mapped[plan.id]))
+        isManualFulfillmentPlan(plan.id) ? manual : isMailQueuePlan(plan.id) ? mail_queue : isXGiftPlan(plan.id) ? xgiftCheckoutEnabled(env) : plan.id === 'gmail-account' ? (gmail || email) : isDeliverySupplierPlan(plan.id) ? (delivery_supplier || (emailProduct(plan.id) ? email : false)) : emailProduct(plan.id) ? email : testing || (live && Boolean(mapped[plan.id]))
       ) ? 1 : 0 }))
       return json({ ...catalog, supportContacts: support.contacts, announcement, plans: offers, mode: live ? 'live' : 'demo', checkoutEnabled: testing || live || email || xgiftCheckoutEnabled(env), testingEnabled: testing, paymentMethods }, 200, { 'Server-Timing': `catalog;dur=${(performance.now() - started).toFixed(1)}` })
     }
@@ -164,8 +168,9 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       }
       const emailDelivery = Boolean(emailProduct(data.plan))
       const manualDelivery = isManualFulfillmentPlan(data.plan)
+      const mailQueueDelivery = isMailQueuePlan(data.plan)
       const manualCheckout = manualDelivery && env.PAYMENT_CHECKOUT_ENABLED === 'true' && (await enabledPaymentMethods(env)).length > 0
-      const live = manualDelivery ? manualCheckout : isXGiftPlan(data.plan) ? xgiftCheckoutEnabled(env) : data.plan === 'gmail-account' ? (gmailCheckoutEnabled(env) || emailCheckoutEnabled(env)) : isDeliverySupplierPlan(data.plan) ? (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env)) : emailDelivery ? emailCheckoutEnabled(env) : supplierCheckoutEnabled(env)
+      const live = mailQueueDelivery ? await mailQueueCheckoutEnabled(env) : manualDelivery ? manualCheckout : isXGiftPlan(data.plan) ? xgiftCheckoutEnabled(env) : data.plan === 'gmail-account' ? (gmailCheckoutEnabled(env) || emailCheckoutEnabled(env)) : isDeliverySupplierPlan(data.plan) ? (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env)) : emailDelivery ? emailCheckoutEnabled(env) : supplierCheckoutEnabled(env)
       if (emailDelivery && !live) throw new ApiError('邮件交付商品暂未开放购买。', 409)
       if (env.ORDER_TESTING_ENABLED !== 'true' && !live) throw new ApiError('该服务暂未开放购买，请稍后再来。', 409)
       const plan = await env.INTEREST_DB.prepare('SELECT * FROM catalog_plans WHERE id=? AND enabled=1').bind(data.plan).first<Plan>()
@@ -176,7 +181,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       if (partner && !offer) throw new ApiError('该代理尚未开通此套餐。', 409)
       if (data.expectedPrice !== (offer?.price_cents ?? plan.price_cents)) throw new ApiError('套餐价格已更新，请刷新后重新确认。', 409)
       const price = offer?.price_cents ?? plan.price_cents
-      const snapshot = live && !manualDelivery && !emailDelivery && !isXGiftPlan(plan.id) ? await supplierSnapshot(env, plan.id, price, offer?.cost_cents) : null
+      const snapshot = live && !manualDelivery && !emailDelivery && !mailQueueDelivery && !isXGiftPlan(plan.id) ? await supplierSnapshot(env, plan.id, price, offer?.cost_cents) : null
       // Only supplier-sourced orders take the procurement path; without the
       // supplier integration these products fall back to email delivery.
       const delivery_supplier = isDeliverySupplierPlan(plan.id) && delivery_supplierCheckoutEnabled(env) ? await delivery_supplierSnapshot(env, plan.id, price, offer?.cost_cents, plan.delivery_instructions) : null

@@ -5,6 +5,7 @@ export const STOREFRONT_PRODUCTS = [
   { id: 'duolingo', name: '多邻国' },
   { id: 'x-premium', name: 'X Premium' },
   { id: 'gmail', name: 'Gmail 账号' },
+  { id: 'mail-queue', name: '邮件服务' },
   { id: 'claude', name: 'Claude', upcoming: true },
   { id: 'grok', name: 'Grok', upcoming: true },
   { id: 'codex-sms', name: 'Codex 接码' },

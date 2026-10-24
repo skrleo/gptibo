@@ -44,6 +44,8 @@ export interface Env {
   CF_SAAS_API_TOKEN?: string
   PARTNER_AUTH_SECRET?: string
   EMAIL_PRODUCTS_ENABLED?: string
+  /** Mail queue service: sender pool + scheduled sending after payment. */
+  MAIL_QUEUE_ENABLED?: string
   DELIVERY_SUPPLIER_API_BASE?: string
   DELIVERY_SUPPLIER_API_KEY?: string
   DELIVERY_SUPPLIER_CHECKOUT_ENABLED?: string

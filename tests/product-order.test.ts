@@ -88,7 +88,7 @@ test('new products are appended and retired or repeated products are discarded',
 test('visibility hides every package only in its shop, supports relisting and preserves old orders', async t => {
   const s = await customerFixture(); t.after(() => s.db.close())
   const a = await s.agent('A'), b = await s.agent('B')
-  for (const agent of [a, b]) s.db.prepare('INSERT INTO partner_prices(partner_id,plan,price_cents,cost_cents) SELECT ?,id,price_cents,100 FROM catalog_plans').run(agent.id)
+  for (const agent of [a, b]) s.db.prepare("INSERT INTO partner_prices(partner_id,plan,price_cents,cost_cents) SELECT ?,id,price_cents,100 FROM catalog_plans WHERE id NOT IN ('muse-ai-once','mail-queue-once')").run(agent.id)
   s.db.exec("UPDATE catalog_plans SET enabled=1,partner_enabled=1 WHERE product_id='chatgpt'")
   const slug = (id: string) => String(s.db.prepare('SELECT slug FROM partners WHERE id=?').get(id)!.slug)
   const buyer = (await s.request('/api/orders/client', {})).headers.get('Set-Cookie')!.split(';')[0]

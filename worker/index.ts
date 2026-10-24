@@ -15,6 +15,7 @@ import { invoiceNotification, reconcileInvoicePayments } from './invoices.ts'
 import { sendDueRechargeReminders } from './recharge-reminders.ts'
 import { reconcileGmail } from './account_supplier/service.ts'
 import { sendDuePartnerOrderEmails } from './partner-settings.ts'
+import { runMailQueue } from './mail-queue.ts'
 import { requireSecureTransport, secureResponse } from './security.ts'
 import { recordApiResponse, pruneSecurityAudit, sendDueSecurityAlerts } from './security-audit.ts'
 import { customDomainEntry, reconcileDomains } from './custom-domain.ts'
@@ -51,6 +52,7 @@ export default {
       run(env, 'gmail', () => reconcileGmail(env)),
       run(env, 'delivery-supplier', () => reconcileDeliverySupplier(env)),
       run(env, 'xgift', () => reconcileXGift(env)),
+      run(env, 'mail-queue', () => runMailQueue(env)),
     ])
     await run(env, 'security-audit-prune', () => pruneSecurityAudit(env))
     await run(env, 'stock-alerts', () => checkStockAlerts(env))

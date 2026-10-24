@@ -95,3 +95,6 @@
 /* Transitions.dev text-state exit/entry, paired with measured 300ms height. */
 .live-checkout-stage[data-leaving=true] { animation:state-enter var(--text-swap-dur) ease-in-out reverse both; pointer-events:none; }
 @media(prefers-reduced-motion:reduce) { .live-checkout-stage[data-leaving=true] { animation:none; } }
+.queue-progress-track { display: block; height: 8px; border-radius: 999px; background: var(--border); overflow: hidden; }
+.queue-progress-track span { display: block; height: 100%; border-radius: 999px; background: var(--brand, #6256cf); transition: width .4s ease; }
+.queue-progress-note { margin: 0; font-size: 13px; line-height: 1.6; color: var(--muted-foreground); }
