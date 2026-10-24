@@ -51,7 +51,7 @@ export function MailQueuePanel({ revision, onUpdated }: { revision: number; onUp
       <p className="admin-subtle" style={{ whiteSpace: 'pre-wrap' }}>主题：{settings.subject}<br />正文：{settings.body}</p>
       <Button variant="outline" disabled={busy} onClick={() => setTemplate(settings)}>编辑模板与节奏</Button>
     </div>)}
-    <h3 style={{ margin: '18px 0 8px' }}>发件邮箱池（{senders.filter(s => s.enabled).length} 启用 / {senders.length} 总数）</h3>
+    <h3>发件邮箱池（{senders.filter(s => s.enabled).length} 启用 / {senders.length} 总数）</h3>
     {senders.length > 0 && <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>名称</th><th>发件地址</th><th>状态</th><th>已发送</th><th>排序</th><th>更新时间</th><th /></tr></thead><tbody>
       {senders.map(sender => <tr key={sender.id}>
         <td>{sender.label}</td>
@@ -96,7 +96,7 @@ export function MailQueuePanel({ revision, onUpdated }: { revision: number; onUp
       <Input id="new-sender-order" type="number" min={0} value={form.sortOrder} onChange={e => setForm({ ...form, sortOrder: Number(e.target.value) })} disabled={busy} />
       <Button type="submit" disabled={busy || !form.label.trim() || !form.fromEmail.includes('@')}>新增</Button>
     </form>}
-    <h3 style={{ margin: '18px 0 8px' }}>队列任务（最近 {resource.data?.tasks.length ?? 0} 条）</h3>
+    <h3>队列任务（最近 {resource.data?.tasks.length ?? 0} 条）</h3>
     {(resource.data?.tasks.length ?? 0) > 0 ? <div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>订单</th><th>客户邮箱</th><th>状态</th><th>进度</th><th>下次执行</th><th>更新时间</th><th /></tr></thead><tbody>
       {resource.data!.tasks.map(task => <tr key={task.id}>
         <td>{task.order_id}</td>

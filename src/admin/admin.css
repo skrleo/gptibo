@@ -124,6 +124,13 @@
 .gmail-supplier-rules p span { display:grid; gap:1px; }
 .gmail-supplier-rules p strong { color:var(--foreground); font-weight:550; }
 .gmail-supplier-rules>small { grid-column:1/-1; color:var(--muted-foreground); font-size:10px; }
+/* 邮件队列面板：标题区外的内容统一留白，分区之间用留白呼吸。 */
+.mail-queue-panel>.admin-success { margin:0; padding:14px 24px 0; }
+.mail-queue-panel>.admin-edit-form { padding:20px 24px 4px; }
+.mail-queue-panel>.admin-edit-form h3 { margin:0; font-size:13px; }
+.mail-queue-panel>.admin-edit-form>Button { justify-self:start; }
+.mail-queue-panel>h3 { margin:26px 0 0; padding:0 24px 12px; font-size:13px; }
+.mail-queue-panel>.admin-subtle { margin:0; padding:18px 24px; }
 .admin-integration-list>div { display:flex; gap:18px; align-items:flex-start; padding:26px; border-bottom:1px solid var(--border); }
 .admin-integration-list>div:last-child { border-bottom:0; }
 .admin-integration-list>div>svg { margin-top:3px; flex-shrink:0; color:var(--muted-foreground); }
@@ -362,6 +369,10 @@
   .gmail-supplier-product>.connection-state { grid-column:3; grid-row:1; }
   .gmail-supplier-rules { grid-template-columns:1fr; padding:17px 20px; }
   .gmail-supplier-rules>small { grid-column:auto; }
+  .mail-queue-panel>.admin-success { padding:12px 20px 0; }
+  .mail-queue-panel>.admin-edit-form { padding:16px 20px 4px; }
+  .mail-queue-panel>h3 { padding:0 20px 10px; }
+  .mail-queue-panel>.admin-subtle { padding:14px 20px; }
 }
 @media (prefers-reduced-motion:reduce) {
   .payment-details summary>svg,.payment-select-wrap select,.integration-console-link { transition:none; }
