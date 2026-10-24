@@ -107,7 +107,7 @@ export function MailQueuePanel({ revision, onUpdated }: { revision: number; onUp
         <td>{time(task.updated_at)}{task.last_error ? ` · ${task.last_error}` : ''}</td>
         <td className="admin-actions">
           {['queued', 'sending'].includes(task.status) && <Button variant="outline" disabled={busy} onClick={() => void call(() => api(`/api/admin/mail-queue/tasks/${task.id}`, { action: 'cancel' }), '队列任务已取消')}>取消</Button>}
-          {['failed', 'cancelled', 'done'].includes(task.status) && task.failed_steps > 0 && <Button variant="outline" disabled={busy} onClick={() => void call(() => api(`/api/admin/mail-queue/tasks/${task.id}`, { action: 'retry' }), '失败步骤已重试')}>重试</Button>}
+          {['failed', 'cancelled', 'done'].includes(task.status) && (task.failed_steps > 0 || task.status === 'cancelled') && <Button variant="outline" disabled={busy} onClick={() => void call(() => api(`/api/admin/mail-queue/tasks/${task.id}`, { action: 'retry' }), task.status === 'cancelled' ? '队列任务已恢复' : '失败步骤已重试')}>重试</Button>}
         </td>
       </tr>)}
     </tbody></table></div> : <p className="admin-subtle">暂无队列任务；有付款的邮件服务订单会出现在这里。</p>}

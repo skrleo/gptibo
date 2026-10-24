@@ -138,6 +138,27 @@ test('a sender that keeps failing is skipped after three attempts while the rest
   assert.equal(step.attempts, 3)
 })
 
+test('a cancelled task can be resumed by retry and finishes its remaining sends', async t => {
+  const s = await setup(); t.after(() => s.db.close())
+  const admin = await s.login(), buyer = await s.buyer()
+  s.db.prepare("INSERT INTO mail_senders(label,from_email,created_at,updated_at) VALUES ('邮箱 A','noreply@a.invalid',?,?)").run(Date.now(), Date.now())
+  const mails = resendMock(t, () => ({ ok: true }))
+  const orderId = await s.paidOrder(buyer)
+  await runMailQueue(s.env)
+  const taskId = (s.db.prepare('SELECT id FROM mail_queue_tasks WHERE order_id=?').get(orderId) as { id: string }).id
+  assert.equal((await s.request(`/api/admin/mail-queue/tasks/${taskId}`, { action: 'cancel' }, admin)).status, 200)
+  assert.equal((s.db.prepare('SELECT status FROM mail_queue_tasks WHERE id=?').get(taskId) as { status: string }).status, 'cancelled')
+  assert.equal((await s.request(`/api/admin/mail-queue/tasks/${taskId}`, { action: 'retry' }, admin)).status, 200)
+  assert.equal((s.db.prepare('SELECT status FROM mail_queue_tasks WHERE id=?').get(taskId) as { status: string }).status, 'sending')
+  forceDue(s.db, orderId)
+  await runMailQueue(s.env)
+  assert.equal(mails.length, 1)
+  const task = s.db.prepare('SELECT status, done_steps FROM mail_queue_tasks WHERE id=?').get(taskId) as { status: string; done_steps: number }
+  assert.equal(task.status, 'done')
+  assert.equal(task.done_steps, 1)
+  assert.equal((s.db.prepare("SELECT status FROM orders WHERE id=?").get(orderId) as { status: string }).status, 'success')
+})
+
 test('refunded orders retire their queue task instead of continuing to send', async t => {
   const s = await setup(); t.after(() => s.db.close())
   const buyer = await s.buyer()
