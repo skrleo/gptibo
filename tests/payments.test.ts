@@ -124,7 +124,8 @@ async function setup(t: TestContext) {
 test('historical manual 25x orders retain their original Alipay route and paid admin completion', async t => {
   const s = await setup(t); s.env.ORDER_TESTING_ENABLED = 'false'
   const catalog = await (await s.request('/api/catalog')).json()
-  assert.equal(catalog.checkoutEnabled, false)
+  // Global checkout flag now reflects the manual channel too (checkout on + Alipay configured), while supplier plans stay closed.
+  assert.equal(catalog.checkoutEnabled, true)
   assert.equal(catalog.plans.find((p: { id: string }) => p.id === 'pro-25x').enabled, 0)
   assert.equal(catalog.plans.find((p: { id: string }) => p.id === 'plus').enabled, 0)
   const admin = await s.admin()
