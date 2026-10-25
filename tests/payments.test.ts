@@ -8,7 +8,7 @@ import worker from '../worker/index.ts'
 import { alipay, canonical, gateway, responseObjectText, type AlipayConfig } from '../worker/payments/alipay.ts'
 import { amountCents, amountText } from '../worker/payments/types.ts'
 import { applyPaymentResult, findPayment, reconcilePayments } from '../worker/payments/service.ts'
-import { expectedMicros, formatUsdt, tailMicros } from '../worker/payments/usdt.ts'
+import { expectedMicros, formatUsdt } from '../worker/payments/usdt.ts'
 import { totpCode } from '../worker/totp.ts'
 import type { Env, Statement, Value } from '../worker/platform.ts'
 
@@ -339,20 +339,19 @@ function mockTron(t: TestContext, rows: unknown[], seen?: { urls: string[] }) {
 const withUsdt = (s: Awaited<ReturnType<typeof setup>>, provider = 'alipay') => { s.env.USDT_TRC20_ADDRESS = USDT_ADDR; s.env.USDT_CNY_PER_USDT = String(USDT_RATE); s.env.PAYMENT_PROVIDER = provider }
 // The create-time cooldown skips upstream calls for a fresh payment.
 const agePayment = (s: Awaited<ReturnType<typeof setup>>) => s.db.prepare('UPDATE payments SET updated_at=?').run(Date.now() - 20000)
-test('USDT expectations are deterministic integers with a bounded unique tail', () => {
-  assert.equal(tailMicros('YMX-ONE'), tailMicros('YMX-ONE'))
-  for (let index = 0; index < 50; index++) { const tail = tailMicros(crypto.randomUUID()); assert.ok(tail >= 1 && tail <= 900000) }
-  assert.equal(expectedMicros(13900, 'YMX-ONE', 7.3), Math.ceil(13900 * 10_000 / 7.3) + tailMicros('YMX-ONE'))
-  // ¥18.80 at 7.3 CNY/USDT is 2.575343 USDT, not 53× that.
-  assert.equal(expectedMicros(1880, 'YMX-GMAIL', 7.3), Math.ceil(1880 * 10_000 / 7.3) + tailMicros('YMX-GMAIL'))
-  assert.ok(Math.abs((expectedMicros(1880, 'YMX-GMAIL', 7.3) - tailMicros('YMX-GMAIL')) * 7.3 / 1_000_000 - 18.8) < 0.01)
-  assert.equal(formatUsdt(1014700001), '1014.700001'); assert.equal(formatUsdt(1), '0.000001')
+test('USDT expectations round to the displayed 2-decimal amount', () => {
+  // The 10_000-micro grain equals the 2-decimal display, so the shown amount
+  // is exactly the expected amount; ceil keeps the CNY price a floor.
+  assert.equal(expectedMicros(13900, 7.3), 19050000)
+  assert.equal(expectedMicros(1880, 7.3), 2580000)
+  assert.equal(expectedMicros(660, 7.3), 910000)
+  assert.equal(formatUsdt(19050000), '19.05'); assert.equal(formatUsdt(900000), '0.90')
   for (const bad of [0, -1, 1.5, NaN]) assert.throws(() => formatUsdt(bad))
 })
 test('USDT create pins the wallet account, snapshots the exact expectation and survives a later rate change', async t => {
   const s = await setup(t); s.live(); withUsdt(s, 'usdt')
   const view = (await (await s.pay('create')).json()).payment
-  const expected = expectedMicros(13900, s.id, USDT_RATE)
+  const expected = expectedMicros(13900, USDT_RATE)
   assert.equal(view.provider, 'usdt'); assert.equal(view.qr, USDT_ADDR); assert.equal(view.expectedUsdt, formatUsdt(expected))
   const row = (await findPayment(s.env, s.id))!
   assert.equal(row.account, USDT_ADDR); assert.equal(row.expected_raw, expected); assert.equal(row.cny_per_usdt, USDT_RATE)
@@ -367,7 +366,7 @@ test('USDT create pins the wallet account, snapshots the exact expectation and s
 test('USDT detection only trusts exact to/contract/value matches and rejects everything else', async t => {
   const s = await setup(t); s.live(); withUsdt(s, 'usdt')
   await s.pay('create'); agePayment(s)
-  const expected = String(expectedMicros(13900, s.id, USDT_RATE))
+  const expected = String(expectedMicros(13900, USDT_RATE))
   for (const patch of [{ to: 'TB' + 'A'.repeat(32) }, { token_info: { address: 'T' + 'C'.repeat(33) } }, { value: String(BigInt(expected) + 1n) }, { value: String(BigInt(expected) - 1n) }, { transaction_id: 'not-hex' }]) {
     mockTron(t, [tron(expected, txid(1), patch)])
     assert.equal((await (await s.pay('query')).json()).payment.status, 'pending')
@@ -415,16 +414,23 @@ test('USDT explicit close retires pre-expiry while post-expiry trades keep the s
 test('a consumed transfer cannot pay a same-expectation order twice', async t => {
   const s = await setup(t); s.live(); withUsdt(s, 'usdt')
   await s.pay('create'); agePayment(s)
-  const expected = String(expectedMicros(13900, s.id, USDT_RATE))
+  const expected = String(expectedMicros(13900, USDT_RATE))
   mockTron(t, [tron(expected, txid(1))])
   assert.equal((await (await s.pay('query')).json()).payment.status, 'paid')
   const other = await (await s.request('/api/orders', { plan: 'plus', expectedPrice: 13900, key: crypto.randomUUID(), email: 'test@example.test' }, s.cookie)).json()
   s.db.prepare("UPDATE orders SET mode='live' WHERE id=?").run(other.order.id)
   await s.request(`/api/orders/${other.order.id}/payment`, { action: 'create', method: 'usdt' }, s.cookie)
   s.db.prepare('UPDATE payments SET expected_raw=? WHERE order_id=?').run(Number(expected), other.order.id); agePayment(s)
-  assert.equal((await s.request(`/api/orders/${other.order.id}/payment`, { action: 'query' }, s.cookie)).status, 503)
+  // The query skips transfers already claimed by another payment (the UNIQUE
+  // (provider,account,trade_no) constraint stays as the write-side backstop),
+  // so the second order stays pending instead of failing with a server error.
+  assert.equal((await s.request(`/api/orders/${other.order.id}/payment`, { action: 'query' }, s.cookie)).status, 200)
   const row = (await findPayment(s.env, other.order.id))!
   assert.equal(row.state, 'pending'); assert.equal(row.trade_no, null)
+  // A fresh transfer of the same amount still pays normally.
+  mockTron(t, [tron(expected, txid(2))]); agePayment(s)
+  assert.equal((await (await s.request(`/api/orders/${other.order.id}/payment`, { action: 'query' }, s.cookie)).json()).payment.status, 'paid')
+  assert.equal((await findPayment(s.env, other.order.id))!.trade_no, txid(2))
 })
 test('options lists configured channels and the requested method overrides the default provider', async t => {
   const s = await setup(t); s.live(); withUsdt(s, 'usdt')
@@ -447,7 +453,7 @@ test('USDT notifications are always rejected and refunds stay on the manual refe
   const response = await worker.fetch(new Request('https://shop.example.invalid/api/payments/notify/usdt', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: 'a=b' }), s.env)
   assert.equal(response.status, 400)
   await s.pay('create'); agePayment(s)
-  mockTron(t, [tron(String(expectedMicros(13900, s.id, USDT_RATE)), txid(1))])
+  mockTron(t, [tron(String(expectedMicros(13900, USDT_RATE)), txid(1))])
   await s.pay('query')
   const admin = await s.admin()
   assert.equal((await s.request(`/api/orders/${s.id}/refunds`, { key: crypto.randomUUID(), reason: '售后', version: 1 }, s.cookie)).status, 201)

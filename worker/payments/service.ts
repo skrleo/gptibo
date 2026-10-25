@@ -80,6 +80,13 @@ async function locked<T>(env: Env, p: Payment, work: () => Promise<T>) {
   }
   finally { await env.INTEREST_DB.prepare('UPDATE payments SET lease_token=NULL,lease_until=0 WHERE order_id=? AND lease_token=?').bind(p.order_id, token).run() }
 }
+// Two-decimal USDT amounts repeat across same-price orders, so a query must
+// never claim an on-chain transfer another payment already recorded.
+const usdtQuery = async (env: Env, p: Payment, d: ReturnType<typeof details>) => {
+  if (p.provider !== 'usdt') return providerFor(env, p).query(d)
+  const used = await env.INTEREST_DB.prepare("SELECT trade_no FROM payments WHERE provider='usdt' AND trade_no IS NOT NULL AND order_id<>? LIMIT 100").bind(p.order_id).all<{ trade_no: string }>()
+  return providerFor(env, p).query({ ...d, excludeTradeNos: used.results.map(row => row.trade_no) })
+}
 async function sync(env: Env, p: Payment, o: Order, close: boolean) {
   const provider = providerFor(env, p); const d = details(p, o)
   // Buyer polling drives query(); cap upstream on-chain lookups per payment
@@ -88,14 +95,14 @@ async function sync(env: Env, p: Payment, o: Order, close: boolean) {
     await env.INTEREST_DB.prepare('UPDATE payments SET updated_at=? WHERE order_id=?').bind(Date.now(), p.order_id).run()
     return
   }
-  let result = await provider.query(d)
+  let result = await usdtQuery(env, p, d)
   await applyPaymentResult(env, p, result)
   if (result.status !== 'paid' && result.status !== 'closed' && close) {
     if (await provider.close(d)) await applyPaymentResult(env, p, { orderId: p.order_id, amountCents: p.amount_cents, status: 'closed' })
     else {
       // The buyer may pay between query and close. Do not assume failed close
       // or a temporary not-found means the buyer has not paid.
-      result = await provider.query(d)
+      result = await usdtQuery(env, p, d)
       await applyPaymentResult(env, p, result)
       // Precreated QR codes may not appear in trade.query until the buyer scans.
       // Only retire a missing trade after the code's maximum validity plus a
@@ -130,7 +137,7 @@ export async function paymentAction(request: Request, env: Env, order: Order, ad
     // Snapshot the USDT expectation at creation: a later env-rate change must
     // never reinterpret a pending order.
     const rate = method === 'usdt' ? usdtRate(env) : null
-    const expectedRaw = rate === null ? null : expectedMicros(order.price_cents, order.id, rate)
+    const expectedRaw = rate === null ? null : expectedMicros(order.price_cents, rate)
     await env.INTEREST_DB.prepare("INSERT INTO payments(order_id,provider,account,amount_cents,expected_raw,cny_per_usdt,expires_at,created_at,updated_at) SELECT id,?,?,price_cents,?,?,?,?,? FROM orders WHERE id=? AND mode='live' AND payment_status='unpaid' AND status='pending' AND redemption_blocked=0 AND refund_hold=0 AND refunded_cents=0 ON CONFLICT(order_id) DO NOTHING")
       .bind(provider.id, provider.account, expectedRaw, rate, now + 15 * 60000, now, now, order.id).run()
     payment = await findPayment(env, order.id)
