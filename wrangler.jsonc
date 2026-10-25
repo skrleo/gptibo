@@ -16,6 +16,7 @@
     "MAIL_QUEUE_ENABLED": "false",
     "XGIFT_CHECKOUT_ENABLED": "false",
     "PAYMENT_CHECKOUT_ENABLED": "true",
+    "PAYMENT_NOTIFY_ORIGIN": "https://gift2card.com",
     "USDT_TRC20_ADDRESS": "TUpLz5Dj8sXn3fxhCvX8J5xW5RNoXgt9ik",
     "USDT_CNY_PER_USDT": "7.30",
     "PAYMENT_TEST_ENABLED": "false",
