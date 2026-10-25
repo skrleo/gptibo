@@ -1,7 +1,7 @@
 import { emailProduct, type AdminDelivery, type DeliverySummary } from '../shared/email-products.ts'
 import { ApiError, body, json, type Env } from './platform.ts'
 import { getOrder, type Order } from './order-state.ts'
-import { alipayConfigured } from './payments/providers.ts'
+import { alipayConfigured, usdtConfigured } from './payments/providers.ts'
 import { membershipDeliveryMessage, sendMembershipPreviewEmail } from './email.ts'
 import { boundedResponseText } from './bounded-response.ts'
 import { adminLoginEmail } from './admin-auth.ts'
@@ -9,7 +9,7 @@ import { adminLoginEmail } from './admin-auth.ts'
 type Delivery = { order_id: string; kind: 'link' | 'cdk'; value: string; instructions: string; mail_body: string; request_key: string; status: 'draft' | 'sending' | 'unknown' | 'sent'; version: number; first_attempt_at: number | null; sent_at: number | null; provider_id: string | null; lease_token: string | null; lease_until: number }
 const find = (env: Env, id: string) => env.INTEREST_DB.prepare('SELECT * FROM email_deliveries WHERE order_id=?').bind(id).first<Delivery>()
 export function emailCheckoutEnabled(env: Env) {
-  if (env.ORDER_TESTING_ENABLED === 'true' || env.EMAIL_PRODUCTS_ENABLED !== 'true' || !alipayConfigured(env) || !env.RESEND_API_KEY || !env.RESEND_FROM) return false
+  if (env.ORDER_TESTING_ENABLED === 'true' || env.EMAIL_PRODUCTS_ENABLED !== 'true' || !(alipayConfigured(env) || usdtConfigured(env)) || !env.RESEND_API_KEY || !env.RESEND_FROM) return false
   try { const url = new URL(env.PAYMENT_NOTIFY_ORIGIN ?? ''); return url.protocol === 'https:' && !url.username && !url.password && url.pathname === '/' && !url.search && !url.hash } catch { return false }
 }
 export async function emailDeliverySummary(env: Env, order: Order): Promise<DeliverySummary | undefined> {

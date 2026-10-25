@@ -46,6 +46,16 @@ test('legacy email orders retain exact prices, immutable purchase notes and manu
   assert.equal(closed.status, 409)
 })
 
+test('email products stay purchasable with USDT alone when Alipay is absent', async t => {
+  const s = await setup(t)
+  for (const key of ['ALIPAY_APP_ID', 'ALIPAY_SELLER_ID', 'ALIPAY_APP_PRIVATE_KEY', 'ALIPAY_PUBLIC_KEY']) delete (s.env as Record<string, unknown>)[key]
+  Object.assign(s.env, { USDT_TRC20_ADDRESS: 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t', USDT_CNY_PER_USDT: '7.3' })
+  const catalog = await (await s.request('/api/catalog')).json()
+  assert.equal(catalog.checkoutEnabled, true)
+  assert.deepEqual(catalog.paymentMethods.map((m: { method: string }) => m.method), ['usdt'])
+  assert.deepEqual(catalog.plans.filter((p: { enabled: number }) => p.enabled).map((p: { id: string }) => p.id), ['gemini-pro-18m', 'duolingo-12m', 'gmail-account'])
+})
+
 test('membership payment uses its own signed Alipay amount and subject; confirmed payment waits for manual email', async t => {
   const s = await setup(t, 'duolingo-12m')
   const methods: string[] = []
