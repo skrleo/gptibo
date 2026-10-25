@@ -5,8 +5,7 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  // 临时启用 workers.dev 入口；gift2card.com 接入 Cloudflare 后改回 false 并恢复 routes。
-  "workers_dev": true,
+  "workers_dev": false,
   "preview_urls": false,
   "triggers": {
     "crons": ["* * * * *"]
@@ -66,10 +65,14 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application"
   },
-  // 域名接入 Cloudflare 后恢复：
-  // "routes": [
-  //   { "pattern": "gift2card.com", "custom_domain": true },
-  //   { "pattern": "www.gift2card.com", "custom_domain": true }
-  // ]
-  "routes": []
+  "routes": [
+    {
+      "pattern": "gift2card.com",
+      "custom_domain": true
+    },
+    {
+      "pattern": "www.gift2card.com",
+      "custom_domain": true
+    }
+  ]
 }
