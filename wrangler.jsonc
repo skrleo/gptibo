@@ -1,11 +1,12 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "gptibo-local",
+  "name": "gift2card",
   "compatibility_date": "2026-09-26",
   "compatibility_flags": [
     "nodejs_compat"
   ],
-  "workers_dev": false,
+  // 临时启用 workers.dev 入口；gift2card.com 接入 Cloudflare 后改回 false 并恢复 routes。
+  "workers_dev": true,
   "preview_urls": false,
   "triggers": {
     "crons": ["* * * * *"]
@@ -26,8 +27,8 @@
   "d1_databases": [
     {
       "binding": "INTEREST_DB",
-      "database_name": "gptibo-local",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_name": "gift2card",
+      "database_id": "a8886662-c7f3-487d-a5f1-b59416d4319b",
       "migrations_dir": "migrations"
     }
   ],
@@ -65,5 +66,10 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application"
   },
+  // 域名接入 Cloudflare 后恢复：
+  // "routes": [
+  //   { "pattern": "gift2card.com", "custom_domain": true },
+  //   { "pattern": "www.gift2card.com", "custom_domain": true }
+  // ]
   "routes": []
 }
