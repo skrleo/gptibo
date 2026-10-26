@@ -4,9 +4,7 @@ import { isDeliverySupplierPlan } from '../delivery_supplier/client.ts'
 import { fulfillDeliverySupplier, delivery_supplierCheckoutEnabled } from '../delivery_supplier/service.ts'
 import { emailProduct } from '../../shared/email-products.ts'
 import { manualProduct } from '../../shared/manual-products.ts'
-import { isMailQueuePlan } from '../../shared/mail-queue-products.ts'
 import { emailCheckoutEnabled } from '../email-delivery.ts'
-import { enqueueMailQueueTask } from '../mail-queue.ts'
 import { fulfillGmail, gmailCheckoutEnabled } from '../account_supplier/service.ts'
 import { ApiError, body, json, type Env } from '../platform.ts'
 import { getOrder, type Order } from '../order-state.ts'
@@ -18,7 +16,7 @@ export type Payment = { order_id: string; provider: string; account: string; amo
 export const findPayment = (env: Env, id: string) => env.INTEREST_DB.prepare('SELECT * FROM payments WHERE order_id=?').bind(id).first<Payment>()
 function paymentSubject(o: Order) {
   const manual = manualProduct(o.plan)
-  return manual ? `${manual.name} ${o.plan_name}` : isMailQueuePlan(o.plan) ? `邮件服务 ${o.plan_name}` : emailProduct(o.plan)?.name ?? (isXGiftPlan(o.plan) ? o.plan_name : o.plan === 'codex-sms-once' ? 'Codex 接码' : 'ChatGPT ' + o.plan_name)
+  return manual ? `${manual.name} ${o.plan_name}` : emailProduct(o.plan)?.name ?? (isXGiftPlan(o.plan) ? o.plan_name : o.plan === 'codex-sms-once' ? 'Codex 接码' : 'ChatGPT ' + o.plan_name)
 }
 const details = (p: Payment, o: Order): PaymentOrder => ({ id: p.order_id, amountCents: p.amount_cents, subject: o.is_test ? 'Gift2Card · 支付联调测试（不交付商品）' : `Gift2Card · ${paymentSubject(o)}`, expiresAt: p.expires_at, createdAt: p.created_at, expectedRaw: p.expected_raw ?? undefined })
 function providerFor(env: Env, p: Payment) {
@@ -61,9 +59,6 @@ export async function applyPaymentResult(env: Env, p: Payment, result: PaymentRe
   }
   if (paid && order.plan === 'gmail-account') {
     try { await fulfillGmail(env, order.id) } catch { /* Payment stays confirmed; cron reconciles the original purchase. */ }
-  }
-  if (paid && isMailQueuePlan(order.plan)) {
-    try { await enqueueMailQueueTask(env, order.id) } catch { /* Payment stays confirmed; the cron sweep creates the queue task. */ }
   }
 }
 async function locked<T>(env: Env, p: Payment, work: () => Promise<T>) {

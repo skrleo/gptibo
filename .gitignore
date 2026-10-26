@@ -56,3 +56,6 @@ artifacts/*
 *.tar.gz
 .open-source-release/
 coverage/
+
+# Local wrangler secrets
+.dev.vars

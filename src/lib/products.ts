@@ -8,7 +8,6 @@ export const PRODUCTS = [
   { id: 'codex-sms', name: 'Codex 接码', category: '短信服务', tagline: '获取手机号，查询接码结果', description: '付款后获取手机号，再查询短信接收结果。', pitch: '付款后获取手机号，再在订单中查询短信状态与验证码。', badge: '单次服务', unit: '次', quantity: '1 次', method: '短信接码', defaultPlan: 'codex-sms-once' as PlanId },
   { id: 'gmail', name: 'Gmail 账号', category: '邮箱账号', tagline: '美国个人白号，资料自动交付', description: '美国长效个人 Gmail 白号，带 2FA 与验证链接。', pitch: '填写可正常收件的邮箱，付款确认后自动发送账号资料。请在购买当天首次登录，并提前确认登录环境与质保范围。', badge: '个人白号', unit: '个', quantity: '1 个账号', method: '自动邮件发货', defaultPlan: 'gmail-account' as PlanId },
   { id: 'muse-ai', name: 'Muse AI', category: 'AI 服务', tagline: '一个一个买，简单清楚', description: 'Muse AI 单个商品，付款后由工作人员处理。', pitch: '每单包含 1 个 Muse AI 商品。付款确认后进入人工处理，进度可在原订单查看。', badge: '单个商品', unit: '个', quantity: '1 个', method: '人工交付', defaultPlan: 'muse-ai-once' as PlanId },
-  { id: 'mail-queue', name: '邮件服务', category: '工具服务', tagline: '付款后，让多个邮箱找到你', description: '按服务时长，多个发件邮箱陆续向您下单邮箱发送邮件。', pitch: '下单时填写自己的邮箱地址。付款确认后队列任务自动开始，进度可在原订单实时查看。', badge: '队列服务', unit: '次', quantity: '1 次服务', method: '队列自动发送', defaultPlan: 'mail-queue-once' as PlanId },
 ] as const
 export type ProductId = typeof PRODUCTS[number]['id']
 export const SMS_STEPS = ['选择付款', '获取手机号', '查询结果'] as const

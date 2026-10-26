@@ -13,7 +13,6 @@
   "vars": {
     "ORDER_TESTING_ENABLED": "false",
     "EMAIL_PRODUCTS_ENABLED": "true",
-    "MAIL_QUEUE_ENABLED": "false",
     "XGIFT_CHECKOUT_ENABLED": "false",
     "PAYMENT_CHECKOUT_ENABLED": "true",
     "PAYMENT_NOTIFY_ORIGIN": "https://gift2card.com",
