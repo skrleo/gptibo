@@ -1703,3 +1703,27 @@ test('admin audit lists every action with filters and pagination, and stays admi
   const paged = await (await s.request('/api/admin/audit?page=2', undefined, admin)).json()
   assert.equal(paged.total, 3); assert.equal(paged.rows.length, 0)
 })
+
+test('manual delivery mode sells supplier plans without procurement and staff completes them', async t => {
+  const s = await setup(); t.after(() => s.db.close())
+  s.env.ORDER_TESTING_ENABLED = 'false'
+  s.env.PAYMENT_CHECKOUT_ENABLED = 'true'
+  s.env.USDT_TRC20_ADDRESS = 'TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t'; s.env.USDT_CNY_PER_USDT = '7.3'; s.env.PAYMENT_NOTIFY_ORIGIN = 'https://shop.example.invalid'
+  const buyer = await s.buyer(); const admin = await s.login()
+  const plus = s.db.prepare('SELECT * FROM catalog_plans WHERE id=?').get('plus')!
+  assert.equal((await s.request('/api/admin/plans/plus', { priceCents: plus.price_cents, enabled: true, deliveryMode: 'robots', version: plus.version, note: '无效模式' }, admin)).status, 400)
+  assert.equal((await s.request('/api/admin/plans/plus', { priceCents: plus.price_cents, enabled: true, deliveryMode: 'manual', version: plus.version, note: '切手动发货' }, admin)).status, 200)
+  const catalog = await (await s.request('/api/catalog')).json()
+  assert.equal(catalog.checkoutEnabled, true)
+  assert.equal(catalog.plans.find((p: { id: string }) => p.id === 'plus').enabled, 1)
+  const created = await s.request('/api/orders', { email: 'buyer@example.test', plan: 'plus', expectedPrice: plus.price_cents, key: crypto.randomUUID() }, buyer)
+  assert.equal(created.status, 201, await created.clone().text())
+  const order = (await created.json()).order
+  // Manual mode takes no procurement snapshot and shows as staff-assisted.
+  assert.equal(s.db.prepare('SELECT COUNT(*) n FROM recharge_orders').get()!.n, 0)
+  assert.equal((await (await s.request('/api/orders/' + order.id, undefined, buyer)).json()).order.manualFulfillment, true)
+  assert.equal((await s.request(`/api/orders/${order.id}/payment`, { action: 'create', method: 'usdt' }, buyer)).status, 200)
+  s.db.prepare("UPDATE orders SET status='session',payment_status='paid' WHERE id=?").run(order.id)
+  assert.equal((await s.request(`/api/admin/orders/${order.id}/actions`, { action: 'manual-complete', version: 0, note: '人工开通完成' }, admin)).status, 200)
+  assert.equal((await (await s.request('/api/orders/' + order.id, undefined, buyer)).json()).order.status, 'success')
+})

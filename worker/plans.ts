@@ -6,7 +6,7 @@ import { mappings as deliveryMappings, products as deliveryProducts } from './de
 import { configured as gmailSupplierConfigured, goodsDetail } from './account_supplier/client.ts'
 import { feishu } from './payout-notifications.ts'
 
-type Plan = { id: string; product_id: string; name: string; price_cents: number; enabled: number; renewal_only: number; partner_enabled: number | null; purchase_note: string; delivery_instructions: string; version: number }
+type Plan = { id: string; product_id: string; name: string; price_cents: number; enabled: number; renewal_only: number; partner_enabled: number | null; purchase_note: string; delivery_instructions: string; version: number; delivery_mode: 'auto' | 'manual' }
 type ImportPlan = { id: string; productId: string; name?: string; priceCents?: number; enabled?: boolean; renewalOnly?: boolean; partnerEnabled?: boolean; purchaseNote?: string; deliveryInstructions?: string }
 
 const PLAN_ID = /^[a-z0-9][a-z0-9-]{0,63}$/

@@ -7,13 +7,13 @@ import { membershipClaimUrl } from '../shared/membership-claim.ts'
 
 type Context = Parameters<Parameters<typeof test>[1]>[0]
 const keys = generateKeyPairSync('rsa', { modulusLength: 2048 })
-async function setup(t: Context, plan = 'gemini-pro-18m') {
+async function setup(t: Context, plan = 'gemini-pro-18m', price = 1990) {
   const s = await customerFixture(); t.after(() => s.db.close())
   Object.assign(s.env, { ORDER_TESTING_ENABLED: 'false', EMAIL_PRODUCTS_ENABLED: 'true', RESEND_API_KEY: 'test-mail-key', RESEND_FROM: 'Gift2Card <delivery@example.test>', PAYMENT_NOTIFY_ORIGIN: 'https://shop.example.invalid', ALIPAY_APP_ID: '2026000000000000', ALIPAY_SELLER_ID: '2088000000000000', ALIPAY_APP_PRIVATE_KEY: keys.privateKey.export({ type: 'pkcs8', format: 'pem' }).toString(), ALIPAY_PUBLIC_KEY: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString() })
   Object.assign(s.env, { DELIVERY_SUPPLIER_API_KEY: 'test-supplier-key', DELIVERY_SUPPLIER_CNY_PER_USD: '6.7', DELIVERY_SUPPLIER_CHECKOUT_ENABLED: 'true' })
   t.mock.method(globalThis, 'fetch', async () => Response.json({ services: [{ service_id: 'DEMO_PRODUCT_A', name: 'Gemini 18M', price: 0.6, stock: 10 }, { service_id: 'DEMO_PRODUCT_B', name: 'Duolingo 1Y', price: 0.38, stock: 10 }] }))
   const buyer = (await s.request('/api/orders/client', {})).headers.get('set-cookie')!.split(';')[0]
-  const created = await s.request('/api/orders', { key: crypto.randomUUID(), plan, expectedPrice: 1990, email: 'member@example.test' }, buyer)
+  const created = await s.request('/api/orders', { key: crypto.randomUUID(), plan, expectedPrice: price, email: 'member@example.test' }, buyer)
   assert.equal(created.status, 201, await created.clone().text())
   const order = (await created.json()).order
   // These cases cover pre-integration manual orders, which have no supplier snapshot.
@@ -249,4 +249,19 @@ test('membership products remain platform-only until an administrator enables pa
   const plan = s.db.prepare("SELECT version FROM catalog_plans WHERE id='gemini-pro-18m'").get()!
   assert.equal((await s.request('/api/admin/plans/gemini-pro-18m', { priceCents: 1990, enabled: true, version: plan.version, note: '启用测试代理销售', partnerEnabled: true }, s.admin)).status, 200)
   assert.equal((await request()).status, 201)
+})
+
+test('manual delivery mode keeps gmail on the email workflow even with the supplier configured', async t => {
+  const s = await setup(t, 'gmail-account', 1880)
+  Object.assign(s.env, { ACCOUNT_SUPPLIER_API_BASE: 'https://supplier.example.test', ACCOUNT_SUPPLIER_APP_ID: '12345', ACCOUNT_SUPPLIER_APP_SECRET: 'secret', ACCOUNT_SUPPLIER_GOODS_ID: '1001', ACCOUNT_SUPPLIER_MAX_COST_CENTS: '600', ACCOUNT_SUPPLIER_CHECKOUT_ENABLED: 'true' })
+  const price = s.db.prepare('SELECT price_cents FROM catalog_plans WHERE id=?').get('gmail-account')!.price_cents as number
+  const plan = s.db.prepare('SELECT version FROM catalog_plans WHERE id=?').get('gmail-account')!
+  assert.equal((await s.request('/api/admin/plans/gmail-account', { priceCents: price, enabled: true, deliveryMode: 'manual', version: plan.version, note: '切手动发货' }, s.admin)).status, 200)
+  const catalog = await (await s.request('/api/catalog')).json()
+  assert.equal(catalog.plans.find((p: { id: string }) => p.id === 'gmail-account').enabled, 1)
+  const buyer = (await s.request('/api/orders/client', {})).headers.get('set-cookie')!.split(';')[0]
+  const created = await s.request('/api/orders', { key: crypto.randomUUID(), plan: 'gmail-account', expectedPrice: price, email: 'member@example.test' }, buyer)
+  assert.equal(created.status, 201, await created.clone().text())
+  // No procurement snapshot: the order stays on the staff-assisted email path.
+  assert.equal(s.db.prepare('SELECT COUNT(*) n FROM account_supplier_orders').get()!.n, 0)
 })

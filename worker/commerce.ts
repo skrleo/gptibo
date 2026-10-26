@@ -36,7 +36,7 @@ import { securitySummary } from './security-audit.ts'
 import { alertThreshold, plansImport, stockSnapshot } from './plans.ts'
 import { catalogOrderRoute, catalogOrderSettings, sortCatalogRows } from './catalog-order.ts'
 
-type Plan = { delivery_instructions: string; partner_enabled: number; id: string; product_id: string; name: string; price_cents: number; enabled: number; renewal_only: number; version: number }
+type Plan = { delivery_instructions: string; partner_enabled: number; id: string; product_id: string; name: string; price_cents: number; enabled: number; renewal_only: number; version: number; delivery_mode: 'auto' | 'manual' }
 type OrderPartnerSource = { id: string; slug: string; name: string; email: string; wechat: string; qq: string }
 const statuses: Status[] = ['pending', 'session', 'processing', 'success', 'failed', 'cancelled']
 const publicOrder = (o: Order) => ({ purchaseNote: o.purchase_note ?? '', isTest: Boolean(o.is_test), customerEmail: o.customer_email, refundedCents: o.refunded_cents, refundHold: Boolean(o.refund_hold), redemptionBlocked: Boolean(o.redemption_blocked), id: o.id, plan: o.plan, planName: o.plan_name, partnerName: o.partner_name ?? undefined, price: o.price_cents / 100, mode: o.mode, paymentStatus: o.payment_status, status: o.status, createdAt: o.created_at, updatedAt: o.updated_at, startedAt: o.started_at ?? undefined, smsPhone: o.sms_phone ?? undefined, version: o.version })
@@ -52,9 +52,9 @@ const customerOrder = async (env: Env, o: Order, contacts = new Map<string, Prom
   const owner = o.partner_id ?? 'platform'
   const settings = contacts.get(owner) ?? supportContactsSettings(env, owner)
   contacts.set(owner, settings)
-  const [support, fulfillment] = await Promise.all([settings, rechargeSummary(env, o)])
+  const [support, fulfillment, planMode] = await Promise.all([settings, rechargeSummary(env, o), env.INTEREST_DB.prepare('SELECT delivery_mode mode FROM catalog_plans WHERE id=?').bind(o.plan).first<{ mode: 'auto' | 'manual' | null}>()])
   if (fulfillment) Object.assign(fulfillment, { syncError })
-  return { ...publicOrder(o), xgift: await xgiftSummary(env, o), manualFulfillment: isManualFulfillmentOrder(o, Boolean(fulfillment)) || Boolean(emailProduct(o.plan)), delivery: await emailDeliverySummary(env, o), mailQueue: await mailQueueSummary(env, o), supportContacts: support.contacts, refundHold: !!o.refund_hold || !!fulfillment?.financialHold, fulfillment }
+  return { ...publicOrder(o), xgift: await xgiftSummary(env, o), manualFulfillment: isManualFulfillmentOrder(o, Boolean(fulfillment)) || Boolean(emailProduct(o.plan)) || planMode?.mode === 'manual', delivery: await emailDeliverySummary(env, o), mailQueue: await mailQueueSummary(env, o), supportContacts: support.contacts, refundHold: !!o.refund_hold || !!fulfillment?.financialHold, fulfillment }
 }
 async function orderPartnerSource(env: Env, order: Order): Promise<OrderPartnerSource | null> {
   if (!order.partner_id) return null
@@ -118,7 +118,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       ])
       // Storefront prices are configured retail prices, independent of supplier latency.
       const offers = (catalog.plans as Plan[]).map(plan => ({ ...plan, enabled: plan.enabled && (
-        isManualFulfillmentPlan(plan.id) ? manual : isMailQueuePlan(plan.id) ? mail_queue : isXGiftPlan(plan.id) ? xgiftCheckoutEnabled(env) : plan.id === 'gmail-account' ? (gmail || email) : isDeliverySupplierPlan(plan.id) ? (delivery_supplier || (emailProduct(plan.id) ? email : false)) : emailProduct(plan.id) ? email : testing || (live && Boolean(mapped[plan.id]))
+        isManualFulfillmentPlan(plan.id) ? manual : isMailQueuePlan(plan.id) ? mail_queue : isXGiftPlan(plan.id) ? (xgiftCheckoutEnabled(env) || (plan.delivery_mode === 'manual' && manual)) : plan.id === 'gmail-account' ? (plan.delivery_mode === 'manual' ? email : (gmail || email)) : isDeliverySupplierPlan(plan.id) ? (plan.delivery_mode === 'manual' ? (emailProduct(plan.id) ? email : false) : (delivery_supplier || (emailProduct(plan.id) ? email : false))) : emailProduct(plan.id) ? email : (testing || (live && Boolean(mapped[plan.id])) || (plan.delivery_mode === 'manual' && manual))
       ) ? 1 : 0 }))
       return json({ ...catalog, supportContacts: support.contacts, announcement, plans: offers, mode: live ? 'live' : 'demo', checkoutEnabled: testing || live || email || xgiftCheckoutEnabled(env) || manual, testingEnabled: testing, paymentMethods }, 200, { 'Server-Timing': `catalog;dur=${(performance.now() - started).toFixed(1)}` })
     }
@@ -169,25 +169,28 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       const emailDelivery = Boolean(emailProduct(data.plan))
       const manualDelivery = isManualFulfillmentPlan(data.plan)
       const mailQueueDelivery = isMailQueuePlan(data.plan)
-      const manualCheckout = manualDelivery && env.PAYMENT_CHECKOUT_ENABLED === 'true' && (await enabledPaymentMethods(env)).length > 0
-      const live = mailQueueDelivery ? await mailQueueCheckoutEnabled(env) : manualDelivery ? manualCheckout : isXGiftPlan(data.plan) ? xgiftCheckoutEnabled(env) : data.plan === 'gmail-account' ? (gmailCheckoutEnabled(env) || emailCheckoutEnabled(env)) : isDeliverySupplierPlan(data.plan) ? (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env)) : emailDelivery ? emailCheckoutEnabled(env) : supplierCheckoutEnabled(env)
-      if (emailDelivery && !live) throw new ApiError('邮件交付商品暂未开放购买。', 409)
-      if (env.ORDER_TESTING_ENABLED !== 'true' && !live) throw new ApiError('该服务暂未开放购买，请稍后再来。', 409)
       const plan = await env.INTEREST_DB.prepare('SELECT * FROM catalog_plans WHERE id=? AND enabled=1').bind(data.plan).first<Plan>()
       if (partner && plan && !plan.partner_enabled) throw new ApiError('该商品暂未开放代理销售。', 409)
       if (!plan) throw new ApiError('该套餐已暂停销售，请选择其他套餐。', 409)
+      // Manual delivery mode sells the plan through the staff-assisted flow even
+      // when the plan's supplier integration is off.
+      const manualCheckout = env.PAYMENT_CHECKOUT_ENABLED === 'true' && (await enabledPaymentMethods(env)).length > 0
+      const manualMode = plan.delivery_mode === 'manual'
+      const live = mailQueueDelivery ? await mailQueueCheckoutEnabled(env) : manualDelivery ? manualCheckout : isXGiftPlan(data.plan) ? (xgiftCheckoutEnabled(env) || manualMode && manualCheckout) : data.plan === 'gmail-account' ? (manualMode ? emailCheckoutEnabled(env) : (gmailCheckoutEnabled(env) || emailCheckoutEnabled(env))) : isDeliverySupplierPlan(data.plan) ? (manualMode ? (emailDelivery && emailCheckoutEnabled(env)) : (delivery_supplierCheckoutEnabled(env) || emailCheckoutEnabled(env))) : emailDelivery ? emailCheckoutEnabled(env) : (supplierCheckoutEnabled(env) || manualMode && manualCheckout)
+      if (emailDelivery && !live) throw new ApiError('邮件交付商品暂未开放购买。', 409)
+      if (env.ORDER_TESTING_ENABLED !== 'true' && !live) throw new ApiError('该服务暂未开放购买，请稍后再来。', 409)
       if (partner && await env.INTEREST_DB.prepare('SELECT 1 FROM partner_product_order p,json_each(p.hidden_product_ids) h WHERE p.partner_id=? AND h.value=?').bind(partner.id, plan.product_id).first()) throw new ApiError('该商品已被商店下架，请选择其他商品。', 409)
       const offer = partner ? await env.INTEREST_DB.prepare('SELECT * FROM partner_prices WHERE partner_id=? AND plan=?').bind(partner.id, plan.id).first<{ price_cents: number; cost_cents: number; version: number }>() : null
       if (partner && !offer) throw new ApiError('该代理尚未开通此套餐。', 409)
       if (data.expectedPrice !== (offer?.price_cents ?? plan.price_cents)) throw new ApiError('套餐价格已更新，请刷新后重新确认。', 409)
       const price = offer?.price_cents ?? plan.price_cents
-      const snapshot = live && !manualDelivery && !emailDelivery && !mailQueueDelivery && !isXGiftPlan(plan.id) ? await supplierSnapshot(env, plan.id, price, offer?.cost_cents) : null
-      // Only supplier-sourced orders take the procurement path; without the
-      // supplier integration these products fall back to email delivery.
-      const delivery_supplier = isDeliverySupplierPlan(plan.id) && delivery_supplierCheckoutEnabled(env) ? await delivery_supplierSnapshot(env, plan.id, price, offer?.cost_cents, plan.delivery_instructions) : null
-      // Only supplier-sourced orders take the procurement path; without the
-      // supplier integration this product falls back to email delivery.
-      const gmail = plan.id === 'gmail-account' && gmailCheckoutEnabled(env) ? await gmailSnapshot(env, price, offer?.cost_cents, plan.delivery_instructions) : null
+      const snapshot = live && !manualDelivery && !emailDelivery && !mailQueueDelivery && !isXGiftPlan(plan.id) && plan.delivery_mode !== 'manual' ? await supplierSnapshot(env, plan.id, price, offer?.cost_cents) : null
+      // Only supplier-sourced orders take the procurement path; manual mode and
+      // a missing supplier integration both fall back to email delivery.
+      const delivery_supplier = isDeliverySupplierPlan(plan.id) && plan.delivery_mode !== 'manual' && delivery_supplierCheckoutEnabled(env) ? await delivery_supplierSnapshot(env, plan.id, price, offer?.cost_cents, plan.delivery_instructions) : null
+      // Only supplier-sourced orders take the procurement path; manual mode and
+      // a missing supplier integration both fall back to email delivery.
+      const gmail = plan.id === 'gmail-account' && plan.delivery_mode !== 'manual' && gmailCheckoutEnabled(env) ? await gmailSnapshot(env, price, offer?.cost_cents, plan.delivery_instructions) : null
       const xgift = isXGiftPlan(plan.id) ? await xgiftSnapshot(env, ownerHash, data) : null
       const id = 'YMX-' + crypto.randomUUID().replaceAll('-', '').toUpperCase(); const eventId = crypto.randomUUID(); const now = Date.now()
       await env.INTEREST_DB.batch([
@@ -332,7 +335,9 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
       }
       let patch: Partial<Order> | undefined
       if (data.action === 'note') patch = {}
-      if (o.payment_status === 'paid' && isManualFulfillmentOrder(o, Boolean(await findRechargeOrder(env, o.id)))) {
+      // Manual-delivery plans enter the same staff-assisted workflow.
+      const staffAssisted = isManualFulfillmentOrder(o, Boolean(await findRechargeOrder(env, o.id))) || (['manual-start', 'manual-complete'].includes(String(data.action)) && (await db.prepare('SELECT 1 FROM catalog_plans WHERE id=? AND delivery_mode=?').bind(o.plan, 'manual').first()) !== null)
+      if (o.payment_status === 'paid' && staffAssisted) {
         if (data.action === 'manual-start' && o.status === 'session') patch = { status: 'processing', started_at: Date.now() }
         if (data.action === 'manual-complete' && ['session', 'processing'].includes(o.status)) patch = { status: 'success' }
       }
@@ -358,6 +363,7 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
     const data = await body(request); const note = requiredNote(data)
     if (!Number.isSafeInteger(data.priceCents) || Number(data.priceCents) < 1 || Number(data.priceCents) > 10000000 || typeof data.enabled !== 'boolean' || !Number.isInteger(data.version)) throw new ApiError('价格或商品状态无效。')
     if (data.partnerEnabled !== undefined && typeof data.partnerEnabled !== 'boolean') throw new ApiError('代理销售设置无效。')
+    if (data.deliveryMode !== undefined && data.deliveryMode !== 'auto' && data.deliveryMode !== 'manual') throw new ApiError('交付方式无效。')
     if ((data.purchaseNote !== undefined && (typeof data.purchaseNote !== 'string' || data.purchaseNote.length > 2000)) || (data.deliveryInstructions !== undefined && (typeof data.deliveryInstructions !== 'string' || data.deliveryInstructions.length > 2000))) throw new ApiError('商品说明最多 2000 字。')
     const plan = await db.prepare('SELECT * FROM catalog_plans WHERE id=?').bind(planMatch[1]).first<Plan>()
     if (!plan) throw new ApiError('套餐不存在。', 404)
@@ -365,8 +371,8 @@ async function admin(request: Request, env: Env, url: URL): Promise<Response> {
     const eventId = crypto.randomUUID()
     // Audit insert and update share a transaction and the same version guard.
     await db.batch([
-      db.prepare('INSERT INTO admin_audit(id,action,target_id,note,created_at) SELECT ?,?,?,?,? FROM catalog_plans WHERE id=? AND version=?').bind(eventId, 'plan-update', plan.id, `${env.ADMIN_USERNAME}: ${plan.price_cents}→${data.priceCents}; enabled ${plan.enabled}→${Number(data.enabled)}; ${note}`, Date.now(), plan.id, plan.version),
-      db.prepare('UPDATE catalog_plans SET price_cents=?,enabled=?,purchase_note=COALESCE(?,purchase_note),delivery_instructions=COALESCE(?,delivery_instructions),partner_enabled=COALESCE(?,partner_enabled),version=version+1,updated_at=? WHERE id=? AND version=?').bind(Number(data.priceCents), Number(data.enabled), typeof data.purchaseNote === 'string' ? data.purchaseNote.trim() : null, typeof data.deliveryInstructions === 'string' ? data.deliveryInstructions.trim() : null, typeof data.partnerEnabled === 'boolean' ? Number(data.partnerEnabled) : null, Date.now(), plan.id, plan.version),
+      db.prepare('INSERT INTO admin_audit(id,action,target_id,note,created_at) SELECT ?,?,?,?,? FROM catalog_plans WHERE id=? AND version=?').bind(eventId, 'plan-update', plan.id, `${env.ADMIN_USERNAME}: ${plan.price_cents}→${data.priceCents}; enabled ${plan.enabled}→${Number(data.enabled)};${typeof data.deliveryMode === 'string' && data.deliveryMode !== plan.delivery_mode ? ` delivery ${plan.delivery_mode}→${data.deliveryMode};` : ''} ${note}`, Date.now(), plan.id, plan.version),
+      db.prepare('UPDATE catalog_plans SET price_cents=?,enabled=?,purchase_note=COALESCE(?,purchase_note),delivery_instructions=COALESCE(?,delivery_instructions),partner_enabled=COALESCE(?,partner_enabled),delivery_mode=COALESCE(?,delivery_mode),version=version+1,updated_at=? WHERE id=? AND version=?').bind(Number(data.priceCents), Number(data.enabled), typeof data.purchaseNote === 'string' ? data.purchaseNote.trim() : null, typeof data.deliveryInstructions === 'string' ? data.deliveryInstructions.trim() : null, typeof data.partnerEnabled === 'boolean' ? Number(data.partnerEnabled) : null, typeof data.deliveryMode === 'string' ? data.deliveryMode : null, Date.now(), plan.id, plan.version),
     ])
     if (!await db.prepare('SELECT id FROM admin_audit WHERE id=?').bind(eventId).first()) throw new ApiError('套餐已更新，请刷新后重试。', 409)
     return json({ ok: true })

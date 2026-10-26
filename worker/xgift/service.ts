@@ -56,6 +56,8 @@ function verifyResult(result: XGiftOrder, row: Purchase) {
 export async function fulfillXGift(env: Env, id: string) {
   let row = await find(env, id)
   if (!row || ['failed','succeeded'].includes(row.state) || row.next_check > Date.now()) return
+  // Manual delivery mode pauses new gifting; switching back to auto resumes it.
+  if ((await env.INTEREST_DB.prepare('SELECT c.delivery_mode mode FROM orders o JOIN catalog_plans c ON c.id=o.plan WHERE o.id=?').bind(id).first<{ mode: string | null }>())?.mode === 'manual') return
   if (!row.attempted_at && !xgiftCheckoutEnabled(env, row.supplier_backend)) return
   if (row.credential_hash !== await credentials(env, row.supplier_backend)) throw new ApiError('赠送接口凭据已变化，请核对原单。', 409)
   const lease = crypto.randomUUID(), now = Date.now()
@@ -102,7 +104,7 @@ async function finish(env: Env, row: Purchase, lease: string, state: string, sup
 }
 export async function reconcileXGift(env: Env) {
   await env.INTEREST_DB.prepare('DELETE FROM xgift_preflights WHERE expires_at<?').bind(Date.now()).run()
-  const rows = (await env.INTEREST_DB.prepare("SELECT x.order_id FROM xgift_purchases x JOIN orders o ON o.id=x.order_id WHERE x.state NOT IN ('failed','succeeded') AND x.next_check<=? AND x.lease_until<=? AND o.payment_status='paid' ORDER BY x.updated_at LIMIT 5").bind(Date.now(), Date.now()).all<{ order_id: string }>()).results
+  const rows = (await env.INTEREST_DB.prepare("SELECT x.order_id FROM xgift_purchases x JOIN orders o ON o.id=x.order_id JOIN catalog_plans c ON c.id=o.plan WHERE x.state NOT IN ('failed','succeeded') AND x.next_check<=? AND x.lease_until<=? AND o.payment_status='paid' AND (c.delivery_mode IS NULL OR c.delivery_mode='auto') ORDER BY x.updated_at LIMIT 5").bind(Date.now(), Date.now()).all<{ order_id: string }>()).results
   for (const row of rows) { try { await fulfillXGift(env, row.order_id) } catch { /* Isolate configuration failures per order. */ } }
 }
 
