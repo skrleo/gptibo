@@ -71,6 +71,12 @@ export interface Env {
   USDT_TRC20_CONTRACT?: string
   USDT_TRONGRID_BASE?: string
   USDT_TRONGRID_API_KEY?: string
+  /** X (Twitter) promotion: OAuth 1.0a single-account posting via secrets. */
+  X_API_KEY?: string
+  X_API_SECRET?: string
+  X_ACCESS_TOKEN?: string
+  X_ACCESS_TOKEN_SECRET?: string
+  X_POST_AUTO_DAILY?: string
   RECHARGE_API_BASE?: string
   RECHARGE_PARTNER_ID?: string
   RECHARGE_KEY_ID?: string

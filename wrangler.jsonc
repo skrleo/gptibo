@@ -22,7 +22,8 @@
     "RECHARGE_CHECKOUT_ENABLED": "false",
     "ACCOUNT_SUPPLIER_CHECKOUT_ENABLED": "false",
     "DELIVERY_SUPPLIER_CHECKOUT_ENABLED": "false",
-    "CUSTOM_DOMAINS_ENABLED": "false"
+    "CUSTOM_DOMAINS_ENABLED": "false",
+    "X_POST_AUTO_DAILY": "false"
   },
   "main": "worker/index.ts",
   "d1_databases": [

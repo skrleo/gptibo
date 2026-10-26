@@ -1,4 +1,5 @@
 import { telegramWebhook, retryTelegramInvitations } from './telegram.ts'
+import { postDailyPromo } from './x-social.ts'
 import { reconcileXGift } from './xgift/service.ts'
 import { reconcileDeliverySupplier } from './delivery_supplier/service.ts'
 import type { Env } from './platform.ts'
@@ -34,6 +35,7 @@ export default {
     // Every job reports into cron_health; consecutive failures page the Feishu bot.
     await run(env, 'telegram-queue', () => retryTelegramInvitations(env))
     await run(env, 'security-alerts', () => sendDueSecurityAlerts(env))
+    await run(env, 'x-post', () => postDailyPromo(env))
     // Reminders run every minute; preserve the existing five-minute reconciliation cadence.
     if (event.scheduledTime === undefined || Math.floor(event.scheduledTime / 60_000) % 5 === 0) {
       await Promise.all([

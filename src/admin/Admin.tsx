@@ -9,6 +9,7 @@ import { CatalogOrderEditor } from './CatalogOrderEditor'
 import type { CatalogOrderSettings } from '../../shared/catalog-order'
 import { EmailDeliveryPanel } from './EmailDeliveryPanel'
 import { XGiftPanel } from './XGiftPanel'
+import { XSocialPanel } from './XSocialPanel'
 import { isXGiftPlan } from '../../shared/xgift-products'
 import { GmailOrderPanel, GmailSupplierPanel } from './GmailSupplierPanel'
 import { productNameForPlan, productNameForId, emailProduct } from '../../shared/email-products'
@@ -174,7 +175,7 @@ function InterestPage({ revision }: { revision: number }) {
   return <section className="admin-panel"><div className="admin-panel-title"><h2>上线提醒登记</h2><span>上线通知尚未启用 · 仅保存登记</span></div><Feedback error={error} loading={loading} data={data} />{data && <><div className="admin-table-scroll"><table className="admin-table"><thead><tr><th>邮箱</th><th>关注商品</th><th>登记时间</th><th>邮箱状态</th></tr></thead><tbody>{data.rows.map(row => <tr key={row.id}><td>{row.email}</td><td>{row.product === 'claude' ? 'Claude' : 'Grok'}</td><td>{time(row.created_at)}</td><td><span className="admin-pill">未验证</span></td></tr>)}</tbody></table>{!data.rows.length && <div className="admin-empty"><Mail size={25} /><h3>暂无登记</h3><p>用户提交的上线提醒会保存在这里。</p></div>}</div><Pagination page={page} total={data.total} onChange={setPage} /></>}<p className="admin-panel-footnote">邮箱仅用于用户同意的商品上线通知。用户取消后，登记会从此处移除。</p></section>
 }
 function IntegrationsPage({ revision }: { revision: number }) {
-  return <div className="integration-workspace"><PaymentChannelsPanel revision={revision} /><div className="integration-services"><RechargeIntegrationsPage revision={revision} /><XGiftPanel revision={revision} /></div></div>
+  return <div className="integration-workspace"><PaymentChannelsPanel revision={revision} /><div className="integration-services"><RechargeIntegrationsPage revision={revision} /><XGiftPanel revision={revision} /><XSocialPanel revision={revision} /></div></div>
 }
 const AUDIT_ACTIONS = [
   ['plan-update', '套餐修改'], ['customer-create', '客户创建'], ['customer-edit', '客户资料修改'],

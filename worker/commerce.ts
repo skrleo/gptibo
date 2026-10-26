@@ -22,6 +22,7 @@ import { supplierSnapshot, snapshotStatement, syncRechargeOrder, rechargeAction,
 import type { SupportContactsSettings } from '../shared/support-contacts.ts'
 import { setRedemptionBlocked } from './order-redemption.ts'
 import { adminVisitorSummary } from './visitors.ts'
+import { xSocialRoutes } from './x-social.ts'
 import { isManualFulfillmentOrder } from './manual-fulfillment.ts'
 import { isManualFulfillmentPlan } from '../shared/manual-products.ts'
 import { accountingRoutes } from './accounting.ts'
@@ -90,6 +91,7 @@ export async function commerce(request: Request, env: Env): Promise<Response> {
       if (path.startsWith('/api/admin/customers')) return await customerRoutes(request,env,url,true)
       if (path.startsWith('/api/admin/accounting')) return await accountingRoutes(request, env, url)
       if (path === '/api/admin/visitors' && method === 'GET') return json(await adminVisitorSummary(env, url))
+      if (path === '/api/admin/x-social') return await xSocialRoutes(request, env, url)
       if (path === '/api/admin/support-contacts') return await supportContactsRoute(request, env)
       if (path === '/api/admin/payments/settings') return await paymentSettingsRoute(request, env)
       if (path.startsWith('/api/admin/payments/test')) return await paymentTesting(request, env, url)
