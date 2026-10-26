@@ -31,8 +31,8 @@ export function XSocialPanel({ revision }: { revision: number }) {
       <Feedback error={error} loading={loading} data={data} shape="compact" />
       {data && !data.configured && <p className="admin-panel-footnote">尚未配置 X API 凭据。在 developer.x.com 免费层创建应用并生成令牌后，依次执行 wrangler secret put X_API_KEY、X_API_SECRET、X_ACCESS_TOKEN、X_ACCESS_TOKEN_SECRET 即可发布。</p>}
       {data && data.configured && <>
-        <textarea value={text} onChange={event => setText(event.target.value)} placeholder="写点想发布的内容，例如促销、上新公告…" style={{ width: '100%', minHeight: 96, padding: '10px 12px', borderRadius: 10, border: '1px solid var(--border, #ddd)', font: 'inherit' }} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+        <textarea value={text} onChange={event => setText(event.target.value)} placeholder="写点想发布的内容，例如促销、上新公告…" style={{ display: 'block', width: '100%', minHeight: 120, margin: '16px 0 0', padding: '12px 14px', borderRadius: 10, border: '1px solid var(--border, #ddd)', font: 'inherit', lineHeight: 1.6 }} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 12, marginBottom: 16 }}>
           <small style={{ color: remaining < 0 ? 'crimson' : 'inherit' }}>{remaining < 0 ? `超出 ${-remaining} 个字符` : `还可输入 ${remaining} 个字符`}</small>
           <Button disabled={busy || !text.trim() || remaining < 0} onClick={() => void publish()}>发布</Button>
         </div>
